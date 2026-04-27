@@ -1,0 +1,44 @@
+{
+  "dataset_id": "example-labeled-pack",
+  "description": "Replace these placeholder files with local face crops or bbox-labeled event photos.",
+  "default_crop_mode": "full_image",
+  "samples": [
+    {
+      "sample_id": "alex_crop_01",
+      "file": "alex/alex_01.jpg",
+      "identity_id": "alex",
+      "cluster_id": "alex",
+      "crop_mode": "full_image",
+      "tags": ["frontal", "bright"]
+    },
+    {
+      "sample_id": "alex_group_01",
+      "file": "group/photo_003.jpg",
+      "identity_id": "alex",
+      "cluster_id": "alex",
+      "crop_mode": "bbox",
+      "bbox": [422, 128, 588, 322],
+      "tags": ["group_shot", "side_profile"]
+    },
+    {
+      "sample_id": "jamie_crop_01",
+      "file": "jamie/jamie_01.jpg",
+      "identity_id": "jamie",
+      "cluster_id": "jamie",
+      "crop_mode": "full_image",
+      "tags": ["dim_light"]
+    }
+  ],
+  "pairs": [
+    {
+      "a": "alex_crop_01",
+      "b": "alex_group_01",
+      "same_identity": true
+    },
+    {
+      "a": "alex_crop_01",
+      "b": "jamie_crop_01",
+      "same_identity": false
+    }
+  ]
+}

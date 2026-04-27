@@ -1,0 +1,8 @@
+*.jpg
+*.jpeg
+*.png
+
+!README.md
+!.gitkeep
+!**/README.md
+!**/*.json
