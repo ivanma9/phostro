@@ -23,6 +23,7 @@ WeTransfer for events × Face ID. Not a destination, not a vault — a transfer 
 | Cross-event scope | Per-event matching only — no global discovery | Avoids BIPA/GDPR landmines and consent ambiguity |
 | Platform | PWA-first | Friction kills attendee adoption; native deferred to power-user phase |
 | Photo fidelity | Originals stored, compressed served by default | Trust contract; people want their actual photos |
+| Visibility model | **Personal** (default): attendees see only photos of them, photos they uploaded, and no-people photos. **Open Pool** and **Host-only** as opt-in modes. | Stronger privacy posture; aligns with courier framing; sharper differentiation vs. Google Photos / shared albums |
 | Storage retention | Default 7 days, max 30 days | Courier framing — we are not a vault |
 | Storage backend | Cloudflare R2 | Zero egress cost, S3-compatible API, no lock-in |
 | Face matching | SFace via ONNX, MIT-licensed | Best free model with permissive license; ~99.6% LFW |
@@ -64,7 +65,9 @@ User
 Event
   id, host_user_id, name, created_at,
   lifespan_days (default 7, max 30), expires_at,
-  extension_used (bool), settings
+  extension_used (bool),
+  visibility_mode (personal | open_pool | host_only, default personal),
+  settings
 
 EventMember
   (event_id, user_id), role (host|attendee), joined_at
@@ -72,7 +75,9 @@ EventMember
 
 Photo
   id, event_id, uploader_user_id, taken_at, uploaded_at,
-  r2_key_original, r2_key_preview, width, height, deleted_at | null
+  r2_key_original, r2_key_preview, width, height,
+  has_detected_faces (bool, set by worker after detection),
+  deleted_at | null
 
 FaceDetection
   id, photo_id, bbox, embedding (vector(128)), cluster_id | null
@@ -81,6 +86,15 @@ FaceCluster
   id, event_id, representative_thumb, representative_embedding (vector(128)),
   claimed_by_user_id | null
   // Per-event scoped; never global
+
+PhotoView
+  (user_id, photo_id), viewed_at
+  // Tracks first time a user opened/viewed a photo
+
+PhotoSave
+  (user_id, photo_id), saved_at
+  // Tracks when a user initiated a save-to-camera-roll
+  // Powers diff-download UX and "X new photos of you" notifications
 ```
 
 ## Recognition pipeline
@@ -136,6 +150,59 @@ v1 implementation: SFace ONNX. If SFace underperforms on group photos at scale, 
 - Daily cron: events past `expires_at` → delete R2 objects, drop `Photo`/`FaceDetection`/`FaceCluster` rows
 - `User.face_profile` persists across events (one-time enrollment); user can delete from profile settings (GDPR)
 - Ephemeral enrollment frames deleted from R2 immediately after embedding extraction
+
+## Visibility modes & gallery UX
+
+Different events have radically different privacy norms. Visibility is a host-level setting at event creation.
+
+### Three modes
+
+| Mode | Who sees what | Best for |
+|---|---|---|
+| **Personal** *(default)* | Attendee sees: photos of themselves, photos they uploaded, no-people photos. **Does not** see photos of other attendees they're not in. Host always sees all. | Weddings, corporate events, parties with strangers, privacy-default |
+| **Open Pool** *(opt-in)* | Everyone in the event sees every photo. Classic shared album. | Close friend groups, family vacations, college reunions |
+| **Host-only** *(strictest)* | Only host sees the full pool. Attendees see only their face-matched photos. | Photographer client work, sensitive contexts |
+
+### Gallery tab structure
+
+**Personal mode (default):**
+
+| Tab | Contents | Notes |
+|---|---|---|
+| **You** | Face-matched photos | Default landing tab if enrolled; CTA to enroll otherwise |
+| **By Me** | Photos the user uploaded | Always available; uploaders need to see their own contributions |
+| **Other** | Photos with `has_detected_faces = false` (food, scenery, decor, the cake) | Everyone sees these |
+
+**Open Pool mode** adds a fourth tab: **All** (every photo, chronological).
+
+**Host-only mode** removes "Other" from attendee view (they only get "You").
+
+### Group photo math under Personal mode
+
+- Photo of 5 people, 3 enrolled → those 3 see it under "You"
+- The 2 unenrolled don't see it, but will when they enroll
+- The 30 other attendees not in the photo don't see it
+- The uploader sees it under "By Me" regardless of who's in it
+
+### Diff-download UX
+
+`PhotoView` and `PhotoSave` tables power smart diff behavior:
+
+- Gallery header: **"23 photos of you · 5 new since Tuesday"**
+- Bulk-save default: **"Save 5 new"** (toggle expands to "Save all")
+- Per-photo state: subtle checkmark on already-saved
+- Empty-state: "All caught up — check back when more photos are added"
+
+Server-side tracking is required (not just localStorage) because:
+- Cross-device consistency (download on phone, see "no new" badge on desktop)
+- Drives re-engagement notifications ("5 new photos of you" needs server delta)
+- Survives clearing browser data
+
+**Honest limitation:** we cannot detect if a user manually deletes from camera roll after saving. "Saved" means "we initiated the save." Re-saving is one tap, so this is acceptable.
+
+### Optional v1.1 escape valve
+
+A per-photo "Share with event" toggle, letting an uploader publish a specific photo to the wider pool even under Personal mode. Useful for the "this turned out so good everyone should see it" case. Defer.
 
 ## Stack
 
@@ -238,7 +305,10 @@ The wedge to prove: **"someone opens a link, enrolls their face, sees only photo
 | Detection pipeline (RetinaFace) | Single CPU worker is fine at this scale |
 | Embedding pipeline (SFace ONNX) | 128-d → pgvector |
 | Per-event clustering (cosine similarity ≥0.55) | Incremental, every 2 min |
-| "Photos of you" gallery | Single column, infinite scroll |
+| Three-tab gallery (You / By Me / Other) | Personal mode default |
+| Visibility mode setting at event creation | Personal default; Open Pool opt-in; Host-only deferred to v1.1 |
+| `has_detected_faces` flag set by worker | Drives "Other" tab |
+| `PhotoSave` tracking + diff-download UX | "5 new since Tuesday", smart bulk-save default |
 | One-tap bulk save to camera roll | iOS PWA + Android |
 | Auto-expire + cleanup cron | Delete R2 + DB rows at expires_at |
 | Email notifications (T+5min, T-2d, T-2h) | Skip push for v1 |
@@ -249,6 +319,8 @@ The wedge to prove: **"someone opens a link, enrolls their face, sees only photo
 
 - Viral invite loop ("invite unrecognized faces")
 - Push notifications, SMS auth + invites
+- Host-only visibility mode
+- Per-photo "Share with event" override under Personal mode
 - Host moderation panel (full version)
 - PhotoDNA / Safer integration
 - Pricing / billing
