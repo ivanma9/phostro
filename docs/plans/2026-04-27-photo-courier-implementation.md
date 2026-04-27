@@ -11,11 +11,12 @@
 - DB: Postgres on Neon + pgvector + Drizzle ORM
 - Storage: Cloudflare R2 (S3-compatible)
 - Email: Resend
-- Auth: Custom magic-link, signed-cookie sessions
+- Auth: Custom magic-link via Resend, signed-cookie sessions — **email only for beta; no phone auth**
 - Recognition worker: Python 3.11 + FastAPI + onnxruntime + RetinaFace + SFace
+- Jobs: Postgres-backed `photo_jobs` table — **no SQS for launch**
 - Tests: Vitest (unit) + Playwright (e2e); pytest for worker
 - Package manager: pnpm; linting: Biome
-- Deploy: Vercel (app) + Fly.io (worker)
+- Deploy: **deferred until after Milestone 0 worker cold-start testing** — stub `Dockerfile` for worker provided in Phase 1; Vercel vs. alternatives decided then
 
 ---
 
@@ -34,9 +35,43 @@ This MVP is split into 6 phases, mapping roughly to the 6-week timeline in the d
 
 ---
 
-# PHASE 1: FOUNDATION
+# PHASE 1: FOUNDATION (Milestone 1)
 
 End state of Phase 1: a host can sign up via magic link, log in, create an event with a name and a 7-day default lifespan, and land on an event page showing a shareable link and QR code. All persisted in Postgres. All testable via Vitest + Playwright.
+
+### Exit criteria
+
+Phase 1 is done when all three hold:
+
+1. **Host flow** — host can create an event and see a working share link (manually verified + Playwright test)
+2. **Attendee join** — attendee can follow the share link, authenticate, and appear as a member in `event_members` (Playwright test)
+3. **Durable and deployable** — app builds cleanly, migrations run in CI, and the stack is deployable to a preview environment (GitHub Actions green)
+
+### Explicitly deferred — not in Milestone 1
+
+Do not implement or unblock these in Phase 1. They belong to later milestones.
+
+- Upload UI and R2 integration (Milestone 2)
+- Face detection, recognition worker, and `photo_jobs` queue (Milestones 2-3)
+- Enrollment consent UI and face matching (Milestone 4)
+- Gallery tabs (`You` / `By Me` / `Other`), diff downloads, bulk save (Milestone 5)
+- Push notifications and email notification triggers (Milestone 6)
+- Native mobile apps
+- Global face discovery across events
+- Video support
+- Host archive / full-event export
+- Per-photo "share with event" override
+- `open_pool` and `host_only` visibility modes in the UI — keep in schema but do not wire up UI or authorization enforcement until post-beta
+
+### Approval checkpoints — gated decisions before beta (not Phase 1 work)
+
+Surface here so they don't slip. None of these block Phase 1; all must be resolved before beta launch.
+
+| Decision | Owner | When |
+|---|---|---|
+| Matching threshold values ("match" / "maybe you" / "no match") | Product + ML | After Milestone 0 benchmark results |
+| Consent wording for face enrollment and profile deletion | Legal / Product | Before Milestone 4 coding starts |
+| Illinois geofencing at signup | Legal | Before beta launch (Milestone 6) |
 
 ---
 
@@ -82,10 +117,41 @@ WORKER_URL=http://localhost:8000
 WORKER_SECRET=
 ```
 
-**Step 5: Commit**
+**Step 5: Add worker deployment stub**
+
+Create `worker/Dockerfile` (empty FastAPI container — implementation is Phase 3):
+```dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+EXPOSE 8000
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+Create `worker/requirements.txt`:
+```
+fastapi>=0.111
+uvicorn[standard]>=0.29
+```
+
+Create `worker/main.py`:
+```python
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+```
+
+This stub satisfies the "deployable" exit criterion without picking a hosting provider. Worker hosting (Fly.io vs. Railway) is decided after Milestone 0 cold-start testing.
+
+**Step 6: Commit**
 ```bash
 git add .
-git commit -m "chore: initialize Next.js project with Biome and pnpm"
+git commit -m "chore: initialize Next.js project with Biome, pnpm, and worker stub"
 ```
 
 ---
@@ -232,8 +298,8 @@ const vector = (name: string, dim: number) =>
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
-  contact: text('contact').notNull().unique(), // email or phone, MVP = email
-  contactType: text('contact_type', { enum: ['email', 'phone'] }).notNull(),
+  contact: text('contact').notNull().unique(), // email only for beta
+  contactType: text('contact_type', { enum: ['email', 'phone'] }).notNull(), // 'phone' kept in enum for future; only 'email' used in beta
   faceEmbedding: vector('face_embedding', 128), // null until enrolled
   faceQualityScore: integer('face_quality_score'),
   faceEnrolledAt: timestamp('face_enrolled_at'),
@@ -321,7 +387,7 @@ git commit -m "feat: add events and event_members tables"
 export const magicLinkTokens = pgTable('magic_link_tokens', {
   id: uuid('id').primaryKey().defaultRandom(),
   contact: text('contact').notNull(),
-  contactType: text('contact_type', { enum: ['email', 'phone'] }).notNull(),
+  contactType: text('contact_type', { enum: ['email', 'phone'] }).notNull(), // beta: email only
   intendedName: text('intended_name'), // captured at signup if new user
   tokenHash: text('token_hash').notNull(),
   expiresAt: timestamp('expires_at').notNull(),
@@ -1315,9 +1381,12 @@ Tasks:
 - Phase 1 doesn't touch the worker — Phase 3 stands it up
 - Until then, photo rows have `has_detected_faces = null` and the gallery is empty
 
+**Locked decisions (not re-opened):**
+- Auth: magic-link email via Resend. No phone for beta.
+- Jobs queue: Postgres-backed `photo_jobs` table. No SQS at launch; revisit only if throughput demands it.
+- Worker hosting: deferred until after Milestone 0 cold-start testing. Stub Dockerfile provided in Phase 1.
+
 **Open questions deferred to phase boundaries:**
 - Phase 2: Sharp vs. cloud image transforms (Cloudflare Image Resizing) for preview generation
-- Phase 3: SQS vs. Postgres-as-queue — start with Postgres (`photo_jobs` polled by worker), revisit if throughput demands SQS
-- Phase 3: Worker hosting — Fly.io vs. Railway. Fly chosen for better cold-start and pricing
 - Phase 4: Enrollment liveness — start with simple movement prompt, add MediaPipe blink/depth in v1.1
 - Phase 5: How do we render videos? Defer videos to v2 — photos only at MVP

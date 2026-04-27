@@ -18,7 +18,9 @@ from pathlib import Path
 from typing import Any
 
 import click
+import cv2
 import numpy as np
+from PIL import Image, ImageOps, UnidentifiedImageError
 from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn
 from rich.table import Table
@@ -36,6 +38,30 @@ from .labeled import (
 console = Console()
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+
+
+def _load_image_bgr(path: Path) -> np.ndarray | None:
+    """
+    Load an image as a BGR ndarray with EXIF orientation applied.
+
+    cv2.imread does not apply EXIF rotation, which would silently rotate
+    phone-camera portrait photos 90° and tank detection rates. We use Pillow
+    to honor orientation, then convert to BGR so the rest of the pipeline
+    (which expects OpenCV-style arrays) is unchanged.
+
+    Returns None on unreadable / corrupt files.
+    """
+    try:
+        with Image.open(path) as im:
+            im = ImageOps.exif_transpose(im)
+            if im.mode != "RGB":
+                im = im.convert("RGB")
+            arr_rgb = np.asarray(im)
+    except (FileNotFoundError, UnidentifiedImageError, OSError):
+        return None
+    if arr_rgb.size == 0:
+        return None
+    return cv2.cvtColor(arr_rgb, cv2.COLOR_RGB2BGR)
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +274,8 @@ def eval_labeled(
         f"Pairs: [bold]{len(dataset.pairs)}[/bold]\n"
     )
 
+    _validate_dataset_for_eval(dataset)
+
     console.rule("[bold blue]Loading models")
     with console.status("Loading detector..."):
         detector = load_detector(models_path)
@@ -333,14 +361,12 @@ def _process_image(
     embedder: Any,
 ) -> dict[str, Any]:
     """Detect + align + embed all faces in one image. Returns a result dict."""
-    import cv2
-
-    image_bgr = cv2.imread(str(img_path))
+    image_bgr = _load_image_bgr(img_path)
     if image_bgr is None:
         return {
             "path": str(img_path),
             "category": category,
-            "error": "cv2.imread returned None — unreadable or corrupt file",
+            "error": "image loader returned None — unreadable or corrupt file",
             "face_count": 0,
             "detection_time_s": 0.0,
             "total_time_s": 0.0,
@@ -380,6 +406,46 @@ def _process_image(
 # Image processing: labeled benchmark
 # ---------------------------------------------------------------------------
 
+def _validate_dataset_for_eval(dataset: LabeledDataset) -> None:
+    """
+    Pre-flight check: refuse to run eval-labeled if the dataset cannot
+    produce both positive and negative pairs, since the precision/recall
+    numbers would be trivially perfect/undefined and silently misleading.
+
+    Requires:
+      - at least 2 samples
+      - at least 2 distinct identities (so a different-person pair can exist)
+      - at least 1 identity with 2+ samples (so a same-person pair can exist)
+
+    Raises click.ClickException with a clear remediation hint on failure.
+    """
+    samples = dataset.samples
+    if len(samples) < 2:
+        raise click.ClickException(
+            f"Dataset has only {len(samples)} sample(s). Need at least 2 to form any pairs."
+        )
+
+    by_identity: dict[str, int] = defaultdict(int)
+    for sample in samples:
+        by_identity[sample.identity_id] += 1
+
+    distinct_identities = len(by_identity)
+    multi_sample_identities = sum(1 for count in by_identity.values() if count >= 2)
+
+    if distinct_identities < 2:
+        raise click.ClickException(
+            "Dataset has only 1 identity — no different-person pairs are possible, "
+            "so precision will be trivially 1.0 at every threshold. "
+            "Add samples for a second identity (folder-per-identity layout: another subdir)."
+        )
+    if multi_sample_identities < 1:
+        raise click.ClickException(
+            "No identity has 2+ samples — no same-person pairs are possible, "
+            "so recall will be 0 at every threshold. "
+            "Add a second photo for at least one identity."
+        )
+
+
 def _process_labeled_sample(
     sample: LabeledSample,
     dataset_root: Path,
@@ -387,11 +453,9 @@ def _process_labeled_sample(
     embedder: Any,
 ) -> dict[str, Any]:
     """Crop, re-align, and embed one labeled sample."""
-    import cv2
-
     rel_path = sample.file.relative_to(dataset_root).as_posix()
     t0 = time.perf_counter()
-    image_bgr = cv2.imread(str(sample.file))
+    image_bgr = _load_image_bgr(sample.file)
 
     if image_bgr is None:
         return {
@@ -402,7 +466,7 @@ def _process_labeled_sample(
             "crop_mode": sample.crop_mode,
             "bbox": list(sample.bbox) if sample.bbox else None,
             "tags": list(sample.tags),
-            "error": "cv2.imread returned None — unreadable or corrupt file",
+            "error": "image loader returned None — unreadable or corrupt file",
             "alignment_detection_time_s": 0.0,
             "total_time_s": 0.0,
         }
@@ -487,8 +551,6 @@ def _prepare_labeled_face(
     face-crop packs and bbox-based packs both usable without requiring landmarks
     in the manifest.
     """
-    import cv2
-
     faces, detect_time = detector.detect(crop_bgr)
     if faces:
         best_face = max(faces, key=lambda face: _bbox_area(face.bbox))

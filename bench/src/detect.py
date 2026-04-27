@@ -116,8 +116,13 @@ def _postprocess(
     """
     Decode det_10g outputs into Face objects in original image coordinates.
 
-    det_10g output order per stride: scores, bbox_deltas, landmark_deltas
-    Total outputs: 3 strides * 3 = 9 tensors.
+    det_10g output order is grouped by tensor type, then stride (matches
+    InsightFace SCRFD reference):
+      [scores_s8, scores_s16, scores_s32,
+       bbox_s8,   bbox_s16,   bbox_s32,
+       kps_s8,    kps_s16,    kps_s32]
+    Total outputs: 3 strides * 3 = 9 tensors. With FMC=3, level i reads
+    outputs[i] (scores), outputs[i + 3] (bbox), outputs[i + 6] (landmarks).
 
     Padding is bottom/right only (_preprocess), so predicted box coordinates
     in padded-image space are identical to non-padded space for all real faces.
@@ -127,15 +132,14 @@ def _postprocess(
     input_h, input_w = INPUT_SIZE
     orig_h, orig_w = orig_shape
 
-    stride_idx = 0
-    for stride in _STRIDES:
+    fmc = len(_STRIDES)
+    for idx, stride in enumerate(_STRIDES):
         feat_h = input_h // stride
         feat_w = input_w // stride
 
-        scores = outputs[stride_idx].reshape(-1)          # (N,)
-        bbox_preds = outputs[stride_idx + 1].reshape(-1, 4)  # (N, 4)
-        lm_preds = outputs[stride_idx + 2].reshape(-1, 10)   # (N, 10)
-        stride_idx += 3
+        scores = outputs[idx].reshape(-1)                # (N,)
+        bbox_preds = outputs[idx + fmc].reshape(-1, 4)   # (N, 4)
+        lm_preds = outputs[idx + 2 * fmc].reshape(-1, 10)  # (N, 10)
 
         # Build anchor centers
         anchors = _make_anchors(feat_h, feat_w, stride)  # (N, 2)

@@ -1,15 +1,19 @@
 """
 Face alignment using the 5-point landmark template.
 
-Applies an affine transform to warp a detected face into a canonical
+Applies a similarity transform to warp a detected face into a canonical
 112x112 crop suitable for SFace embedding. The template is the standard
-ArcFace / InsightFace target positions.
+ArcFace / InsightFace target positions, and the fit uses the closed-form
+Umeyama least-squares estimator (skimage.SimilarityTransform) — the same
+estimator the InsightFace reference uses, so embeddings stay comparable
+to published thresholds and are deterministic across runs.
 """
 
 from __future__ import annotations
 
 import cv2
 import numpy as np
+from skimage.transform import SimilarityTransform
 
 # Standard ArcFace 112x112 reference landmark positions
 # Order: right_eye, left_eye, nose_tip, right_mouth, left_mouth
@@ -41,13 +45,13 @@ def align_face(image_bgr: np.ndarray, landmarks: np.ndarray) -> np.ndarray:
     src = landmarks.astype(np.float32)
     dst = ARCFACE_TEMPLATE
 
-    transform = cv2.estimateAffinePartial2D(src, dst, method=cv2.LMEDS)[0]
-    if transform is None:
-        # Fallback: return a rough bbox crop resized to 112x112
-        # This can happen when landmarks are degenerate (very small face, etc.)
+    tform = SimilarityTransform()
+    if not tform.estimate(src, dst):
+        # Degenerate landmarks (collinear, duplicate, very small face).
         return _bbox_fallback(image_bgr, landmarks)
 
-    aligned = cv2.warpAffine(image_bgr, transform, ALIGN_SIZE, flags=cv2.INTER_LINEAR)
+    matrix = tform.params[:2, :].astype(np.float32)
+    aligned = cv2.warpAffine(image_bgr, matrix, ALIGN_SIZE, flags=cv2.INTER_LINEAR)
     return aligned
 
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+import cv2
 import numpy as np
 import onnxruntime as ort
 
@@ -20,7 +21,9 @@ MODEL_FILENAME = "face_recognition_sface_2021dec.onnx"
 
 PROVIDERS = ["CPUExecutionProvider"]
 
-# SFace input: (1, 3, 112, 112), float32, BGR, [0, 255]
+# SFace input: (1, 3, 112, 112), float32, RGB, [0, 255].
+# OpenCV's reference impl uses blobFromImage(..., swapRB=true), so the model
+# was trained on RGB-ordered channels even though OpenCV decodes images as BGR.
 INPUT_SIZE = (112, 112)
 EMBEDDING_DIM = 128
 
@@ -45,7 +48,9 @@ class Embedder:
         Compute a 128-d L2-normalized embedding for an aligned 112x112 BGR face.
 
         Args:
-            aligned_face_bgr: Shape (112, 112, 3), BGR, uint8 or float32.
+            aligned_face_bgr: Shape (112, 112, 3), BGR (as produced by cv2.imread
+                and align_face), uint8 or float32. Internally swapped to RGB
+                before being fed to SFace.
 
         Returns:
             Embedding vector, shape (128,), float32, L2-normalized.
@@ -77,11 +82,11 @@ def cosine_distance(a: np.ndarray, b: np.ndarray) -> float:
 # -- Preprocessing ------------------------------------------------------------
 
 def _preprocess(face_bgr: np.ndarray) -> np.ndarray:
-    """Convert aligned face crop to SFace input blob."""
+    """Convert an aligned BGR face crop to an SFace input blob (RGB, NCHW)."""
     if face_bgr.shape[:2] != INPUT_SIZE:
-        import cv2
         face_bgr = cv2.resize(face_bgr, INPUT_SIZE, interpolation=cv2.INTER_LINEAR)
 
-    blob = face_bgr.astype(np.float32)
+    face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
+    blob = face_rgb.astype(np.float32)
     blob = blob.transpose(2, 0, 1)[np.newaxis]  # (1, 3, 112, 112)
     return blob
