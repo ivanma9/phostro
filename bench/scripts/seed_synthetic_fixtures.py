@@ -25,6 +25,13 @@ FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 FETCH_COUNT = 16
 DELAY_SECONDS = 1.5
 
+# RetinaFace cannot detect faces that fill ~80%+ of the frame. GAN portraits
+# from thispersondoesnotexist.com are tightly cropped (~85% of frame). Padding
+# with neutral gray brings the face down to event-photo scale (~33% of frame),
+# which is the regime the detector was trained on.
+TARGET_FACE_FRACTION = 0.33
+NEUTRAL_FILL = (96, 96, 96)
+
 
 def fetch_face() -> Image.Image:
     request = urllib.request.Request(SOURCE_URL, headers={"User-Agent": USER_AGENT})
@@ -45,6 +52,21 @@ def fetch_pool(count: int) -> list[Image.Image]:
 def save_jpeg(image: Image.Image, path: Path, quality: int = 92) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     image.save(path, format="JPEG", quality=quality)
+
+
+def pad_to_event_scale(face: Image.Image, target_fraction: float = TARGET_FACE_FRACTION) -> Image.Image:
+    """
+    Pad a tightly-cropped face image with neutral background so the face
+    occupies `target_fraction` of the resulting frame width. Brings the
+    composition into the scale range RetinaFace expects.
+    """
+    side = max(face.width, face.height)
+    target_side = int(round(side / target_fraction))
+    canvas = Image.new("RGB", (target_side, target_side), NEUTRAL_FILL)
+    offset_x = (target_side - face.width) // 2
+    offset_y = (target_side - face.height) // 2
+    canvas.paste(face, (offset_x, offset_y))
+    return canvas
 
 
 def make_group_shot(faces: list[Image.Image], target_height: int = 768) -> Image.Image:
@@ -72,16 +94,19 @@ def main() -> int:
 
     print("Writing single_frontal/ ...")
     for index, face in enumerate(faces[0:5], 1):
-        save_jpeg(face, FIXTURES / "single_frontal" / f"face_{index:02d}.jpg")
+        framed = pad_to_event_scale(face)
+        save_jpeg(framed, FIXTURES / "single_frontal" / f"face_{index:02d}.jpg")
 
     print("Writing low_res/ ...")
     for index, face in enumerate(faces[5:10], 1):
-        small = face.resize((256, 256), Image.LANCZOS)
+        framed = pad_to_event_scale(face)
+        small = framed.resize((512, 512), Image.LANCZOS)
         save_jpeg(small, FIXTURES / "low_res" / f"face_{index:02d}.jpg", quality=80)
 
     print("Writing dim_light/ ...")
     for index, face in enumerate(faces[10:15], 1):
-        dim = ImageEnhance.Brightness(face).enhance(0.35)
+        framed = pad_to_event_scale(face)
+        dim = ImageEnhance.Brightness(framed).enhance(0.55)
         save_jpeg(dim, FIXTURES / "dim_light" / f"face_{index:02d}.jpg")
 
     print("Writing group_shot/ ...")

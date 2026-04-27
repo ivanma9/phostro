@@ -97,8 +97,10 @@ def _preprocess(
     pad_w = target_w - new_w
     padded = cv2.copyMakeBorder(resized, 0, pad_h, 0, pad_w, cv2.BORDER_CONSTANT, value=0)
 
-    # NCHW, float32, BGR mean subtraction (det_10g uses 127.5 / 128)
-    blob = (padded.astype(np.float32) - 127.5) / 128.0
+    # det_10g was trained on RGB. cv2.imread returns BGR. Swap to match
+    # the InsightFace reference (cv2.dnn.blobFromImage(..., swapRB=True)).
+    rgb = cv2.cvtColor(padded, cv2.COLOR_BGR2RGB)
+    blob = (rgb.astype(np.float32) - 127.5) / 128.0
     blob = blob.transpose(2, 0, 1)[np.newaxis]  # (1, 3, H, W)
 
     return blob, scale, (pad_h, pad_w)
