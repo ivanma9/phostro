@@ -1,6 +1,7 @@
 import {
   boolean,
   customType,
+  index,
   integer,
   pgTable,
   primaryKey,
@@ -44,16 +45,21 @@ export const events = pgTable('events', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 
-export const magicLinkTokens = pgTable('magic_link_tokens', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  contact: text('contact').notNull(),
-  contactType: text('contact_type', { enum: ['email', 'phone'] }).notNull(),
-  intendedName: text('intended_name'),
-  tokenHash: text('token_hash').notNull(),
-  expiresAt: timestamp('expires_at').notNull(),
-  consumedAt: timestamp('consumed_at'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-})
+export const magicLinkTokens = pgTable(
+  'magic_link_tokens',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    contact: text('contact').notNull(),
+    contactType: text('contact_type', { enum: ['email', 'phone'] }).notNull(),
+    intendedName: text('intended_name'),
+    intendedRedirect: text('intended_redirect'),
+    tokenHash: text('token_hash').notNull(),
+    expiresAt: timestamp('expires_at').notNull(),
+    consumedAt: timestamp('consumed_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [index('magic_link_tokens_contact_idx').on(t.contact)],
+)
 
 export const eventMembers = pgTable(
   'event_members',

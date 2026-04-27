@@ -1,4 +1,8 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
+
+// Magic-link tokens are 256-bit cryptographic randoms; SHA-256 storage is sufficient
+// (preimage-resistant, no user-chosen entropy). We compare hashes via SQL `=` —
+// timing leaks here would only reveal hash bytes, not the secret token.
 
 export function generateToken(): string {
   return randomBytes(32).toString('hex')
@@ -6,10 +10,4 @@ export function generateToken(): string {
 
 export async function hashToken(token: string): Promise<string> {
   return createHash('sha256').update(token).digest('hex')
-}
-
-export async function verifyToken(token: string, hash: string): Promise<boolean> {
-  const tHash = await hashToken(token)
-  if (tHash.length !== hash.length) return false
-  return timingSafeEqual(Buffer.from(tHash), Buffer.from(hash))
 }

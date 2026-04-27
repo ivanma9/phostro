@@ -25,7 +25,11 @@ export default defineConfig({
     timeout: 60_000,
     reuseExistingServer: !process.env.CI,
     env: {
-      DATABASE_URL: process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL ?? '',
+      DATABASE_URL: (() => {
+        const url = process.env.TEST_DATABASE_URL
+        if (!url) throw new Error('TEST_DATABASE_URL must be set for Playwright')
+        return url
+      })(),
       SESSION_SECRET:
         process.env.SESSION_SECRET ?? 'test_session_secret_at_least_32_characters_long_!!',
       APP_URL: baseURL,

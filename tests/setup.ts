@@ -3,9 +3,12 @@ import { config } from 'dotenv'
 config({ path: '.env.local' })
 config({ path: '.env' })
 
-if (process.env.TEST_DATABASE_URL) {
-  process.env.DATABASE_URL = process.env.TEST_DATABASE_URL
+if (!process.env.TEST_DATABASE_URL) {
+  throw new Error(
+    'TEST_DATABASE_URL must be set for tests. Run `pnpm test:db:up` and ensure .env.local sets TEST_DATABASE_URL, or pass it inline.',
+  )
 }
+process.env.DATABASE_URL = process.env.TEST_DATABASE_URL
 if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) {
   process.env.SESSION_SECRET = 'test_session_secret_at_least_32_characters_long_!!'
 }

@@ -1,8 +1,11 @@
 'use client'
 
+import { useSearchParams } from 'next/navigation'
 import { type FormEvent, useState } from 'react'
 
 export function SignInForm() {
+  const params = useSearchParams()
+  const next = params.get('next')
   const [contact, setContact] = useState('')
   const [name, setName] = useState('')
   const [sent, setSent] = useState(false)
@@ -17,7 +20,7 @@ export function SignInForm() {
       const res = await fetch('/api/auth/request', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ contact, name }),
+        body: JSON.stringify({ contact, name, next }),
       })
       if (res.ok) setSent(true)
       else setError('Could not send magic link.')
@@ -43,6 +46,7 @@ export function SignInForm() {
         onChange={(e) => setName(e.target.value)}
         placeholder="Your name"
         required
+        maxLength={100}
         className="w-full rounded border px-3 py-2"
       />
       <input

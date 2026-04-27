@@ -1,36 +1,38 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# phostro
 
-## Getting Started
+Photo-courier MVP — Next.js + Postgres + pgvector. See `docs/plans/2026-04-27-photo-courier-implementation.md` for the implementation plan.
 
-First, run the development server:
+## Setup
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+1. `cp .env.example .env.local` and fill in:
+   - `DATABASE_URL` — your dev Postgres (Supabase / Neon branch — **never** the production project DB).
+   - `TEST_DATABASE_URL=postgres://postgres:postgres@localhost:54329/postgres` — for the local Docker test DB.
+   - `SESSION_SECRET` — must be ≥ 32 chars. Generate via `openssl rand -hex 32`.
+   - `RESEND_API_KEY` — only needed when you want real emails to send.
+2. `pnpm install`
+3. Enable the `vector` extension on your dev DB:
+   ```sql
+   CREATE EXTENSION IF NOT EXISTS vector;
+   ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Common commands
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Command | What it does | Targets |
+|---|---|---|
+| `pnpm dev` | Next.js dev server | reads `.env.local` (`DATABASE_URL`) |
+| `pnpm build` | Production build | reads `.env.local` |
+| `pnpm db:generate` | Generate a new migration from `db/schema.ts` | n/a |
+| `pnpm db:migrate` | **Apply migrations to dev DB** | `DATABASE_URL` from `.env.local` |
+| `pnpm db:studio` | Drizzle Studio against dev DB | `DATABASE_URL` |
+| `pnpm test:db:up` | Start the local Docker Postgres for tests | port 54329 |
+| `pnpm test:db:migrate` | Apply migrations to the test DB | hard-coded local URL |
+| `pnpm test:db:down` | Stop & wipe the test DB | — |
+| `pnpm test` | Vitest unit + integration tests | `TEST_DATABASE_URL` (required) |
+| `pnpm test:e2e` | Playwright e2e | `TEST_DATABASE_URL` (required) |
+| `pnpm lint` / `pnpm check` | Biome lint (check / autofix) | — |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+`pnpm test` and `pnpm test:e2e` will refuse to run if `TEST_DATABASE_URL` is unset — by design, so a stray run can never mutate the dev DB.
 
-## Learn More
+## Tech
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Next.js 16 (App Router) · React 19 · Tailwind 4 · Drizzle ORM + postgres-js · pgvector · iron-session · Resend · Vitest · Playwright · Biome.
