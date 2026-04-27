@@ -3,15 +3,7 @@
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
     "ignoreUnknown": false,
-    "includes": [
-      "**/*.ts",
-      "**/*.tsx",
-      "**/*.json",
-      "!**/node_modules/**",
-      "!**/.next/**",
-      "!bench/**",
-      "!worker/**"
-    ]
+    "includes": ["**/*.ts", "**/*.tsx", "**/*.json", "!node_modules", "!.next", "!bench", "!worker"]
   },
   "formatter": {
     "enabled": true,
