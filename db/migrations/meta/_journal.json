@@ -15,6 +15,13 @@
       "when": 1777319865916,
       "tag": "0001_cynical_cyclops",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777319890634,
+      "tag": "0002_sparkling_black_queen",
+      "breakpoints": true
     }
   ]
 }
