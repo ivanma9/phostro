@@ -16,7 +16,8 @@
     "db:studio": "drizzle-kit studio",
     "test:db:up": "docker compose -f docker-compose.test.yml up -d --wait",
     "test:db:down": "docker compose -f docker-compose.test.yml down -v",
-    "test:db:migrate": "DATABASE_URL=postgres://postgres:postgres@localhost:54329/postgres drizzle-kit migrate"
+    "test:db:migrate": "DATABASE_URL=postgres://postgres:postgres@localhost:54329/postgres drizzle-kit migrate",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "dotenv": "^17.4.2",
@@ -31,6 +32,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.13",
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
