@@ -1,4 +1,13 @@
-import { customType, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import {
+  boolean,
+  customType,
+  integer,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core'
 
 const vector = (name: string, dim: number) =>
   customType<{ data: number[]; driverData: string }>({
@@ -17,3 +26,35 @@ export const users = pgTable('users', {
   faceEnrolledAt: timestamp('face_enrolled_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
+
+export const events = pgTable('events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  hostUserId: uuid('host_user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  visibilityMode: text('visibility_mode', {
+    enum: ['personal', 'open_pool', 'host_only'],
+  })
+    .notNull()
+    .default('personal'),
+  lifespanDays: integer('lifespan_days').notNull().default(7),
+  expiresAt: timestamp('expires_at').notNull(),
+  extensionUsed: boolean('extension_used').notNull().default(false),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
+export const eventMembers = pgTable(
+  'event_members',
+  {
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: text('role', { enum: ['host', 'attendee'] }).notNull(),
+    joinedAt: timestamp('joined_at').notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.eventId, t.userId] })],
+)

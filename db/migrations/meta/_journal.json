@@ -8,6 +8,13 @@
       "when": 1777319817385,
       "tag": "0000_numerous_shatterstar",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777319865916,
+      "tag": "0001_cynical_cyclops",
+      "breakpoints": true
     }
   ]
 }
