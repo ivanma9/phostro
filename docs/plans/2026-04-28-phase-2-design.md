@@ -19,7 +19,7 @@ Builds on Phase 1 (`docs/plans/2026-04-27-photo-courier-implementation.md`). Set
 | 5 | **Multi-select + drag-and-drop** picker, **parallel batch of 3**, **aggregate progress bar** | Meaningful speedup, simple state. |
 | 6 | **Extract `taken_at`** from EXIF, **strip everything else** from both objects | Chronological gallery; no GPS leakage. |
 | 7 | Caps: **25 MB/photo**, **5,000 photos/event**, **no per-attendee cap**, allow JPEG/PNG/HEIC/HEIF | Defensive but not paranoid. |
-| 8 | **Private R2 bucket.** No public dev URL. Both preview and original served through Next.js routes that check event membership. | Required by product design line 26 (Personal mode default); without this, all visibility modes fail. |
+| 8 | **Private R2 bucket.** No public dev URL. Preview URLs minted as 5-min presigned GETs at gallery render time and embedded in HTML. Originals served via `/api/photos/:id/original` route that checks `caller is uploader` (Phase 2) and 302-redirects to a freshly-minted 5-min presigned GET. | Required by product design line 26 (Personal mode default). Render-time presigning avoids per-image serverless invocations. |
 | 9 | **Photos row created at `init` time**, not at finalize | Binds `photoId` to uploader + event at the moment of presigned-URL minting. Closes IDOR / upload-hijack window. |
 
 ---
@@ -35,7 +35,7 @@ Builds on Phase 1 (`docs/plans/2026-04-27-photo-courier-implementation.md`). Set
 **Three write API routes:**
 1. `POST /api/events/:id/photos/init` — validates membership, MIME, declared size, event cap (with row lock). **Inserts a `photos` row** with `processingState='pending'` and `pendingExpiresAt = now() + 24h`. Returns presigned PUT URL pointing at `events/<eventId>/pending/<photoId>.bin`.
 2. Browser uploads bytes directly to R2 via presigned URL. App-server bandwidth = zero.
-3. `POST /api/events/:id/photos/:photoId/finalize` — loads the `photos` row, **verifies the row's `uploaderUserId` matches the caller** (closes IDOR), then **atomically claims** the row: `UPDATE photos SET processingState='processing' WHERE id=$1 AND processingState='pending' RETURNING *`. If the claim returns nothing, another finalize already won — return idempotent response based on current state. After claim: HEADs the pending object to enforce real size, fetches it, runs Sharp, writes original/preview, deletes pending, sets `processingState='ready'` + final metadata.
+3. `POST /api/events/:id/photos/:photoId/finalize` — loads the `photos` row, **verifies the row's `uploaderUserId` matches the caller** (closes IDOR), rejects rows whose `pendingExpiresAt < now()` early (returns 410, sets `state='failed'`), then **atomically claims** the row including stale-claim reclaim: `UPDATE photos SET processingState='processing', processingClaimedAt=now() WHERE id=$1 AND (processingState='pending' OR (processingState='processing' AND processingClaimedAt < now() - interval '5 minutes')) RETURNING *`. If the claim returns nothing, branch on observed state. After claim: HEADs the pending object to enforce real size, fetches it, runs Sharp, writes original/preview, deletes pending, sets `processingState='ready'` + clears `processingClaimedAt`/`pendingExpiresAt` + final metadata.
 
 **Read path (no streaming through Next.js):**
 
@@ -87,6 +87,11 @@ export const photos = pgTable(
     // Pending row expiry — mirrors R2 lifecycle; Phase 6 cleanup deletes
     // rows where state='pending' and pendingExpiresAt < now().
     pendingExpiresAt: timestamp('pending_expires_at'),  // set at init, cleared on finalize
+
+    // Stale-claim reclaim. Set when state→'processing'; finalize allows
+    // re-claiming rows whose claimedAt is older than 5 minutes (the function
+    // crashed mid-Sharp). Cleared when state→'ready' or 'failed'.
+    processingClaimedAt: timestamp('processing_claimed_at'),
 
     // R2 keys
     pendingKey: text('pending_key'),                    // set at init, cleared on finalize
@@ -194,20 +199,40 @@ Browser                  Next.js API              R2                     Postgre
 3. Event not expired → else 410 Gone.
 4. MIME ∈ allowlist → else 400.
 5. Declared size ≤ 25 MB → else 413.
-6. **Inside `BEGIN`:** `SELECT 1 FROM events WHERE id=$1 FOR UPDATE` (locks the parent row); count `WHERE event_id=$1 AND deleted_at IS NULL`; if count ≥ 5000 → 429 + `ROLLBACK`. Otherwise `INSERT INTO photos … 'pending'` and `COMMIT`. Two concurrent inits at the boundary serialize on the same locked event row.
+6. **Inside `BEGIN`:** `SELECT 1 FROM events WHERE id=$1 FOR UPDATE` (locks the parent row); count rows that genuinely consume the event quota:
+   ```sql
+   SELECT count(*) FROM photos
+   WHERE event_id=$1
+     AND deleted_at IS NULL
+     AND (
+       processing_state IN ('ready', 'processing')
+       OR (processing_state = 'pending' AND pending_expires_at > now())
+     )
+   ```
+   Expired pending rows are deliberately excluded — they're tombstones awaiting Phase 6 cleanup, not real uploads. If count ≥ 5000 → 429 + `ROLLBACK`. Otherwise `INSERT INTO photos … 'pending'` with `pendingExpiresAt = now() + interval '24 hours'` and `COMMIT`. Two concurrent inits at the boundary serialize on the same locked event row.
 
 **Finalize validation:**
 1. Authenticated → else 401.
 2. `SELECT photos WHERE id=$1` → 404 if missing.
 3. `row.uploaderUserId === currentUser.id` → else 403 (closes IDOR; even if the photoId is guessed, only the original uploader can finalize).
-4. **Atomic claim:** `UPDATE photos SET processingState='processing' WHERE id=$1 AND processingState='pending' RETURNING *`.
-   - If a row is returned: caller owns processing, continue to step 5.
+4. **Pending TTL check:** if `row.pendingExpiresAt < now()` AND `row.processingState IN ('pending', 'processing')` → set `state='failed'`, return 410 with body `{ status: 'expired' }`. R2 lifecycle has either already deleted the pending object or will soon; we don't want to chase a doomed upload.
+5. **Atomic claim with stale-reclaim:**
+   ```sql
+   UPDATE photos SET processing_state='processing', processing_claimed_at=now()
+   WHERE id=$1
+     AND (
+       processing_state='pending'
+       OR (processing_state='processing' AND processing_claimed_at < now() - interval '5 minutes')
+     )
+   RETURNING *
+   ```
+   - If a row is returned: caller owns processing, continue to step 6. Stale-reclaim handles the case where a previous finalize crashed/timed out and left the row stranded — after 5 minutes (longer than any realistic Sharp run on Vercel's max function timeout of 60s), retries can succeed instead of being permanently stuck at 409.
    - If no row is returned: re-read by id and branch on observed state:
-     - `processing` → another concurrent finalize is running; return 409 with body `{ status: 'processing' }`.
-     - `ready` → idempotent success: return existing row.
+     - `processing` (with recent `processingClaimedAt`) → another finalize is actively running; return 409 with body `{ status: 'processing', retryAfterSeconds: 30 }`.
+     - `ready` → idempotent success: return existing row, 200.
      - `failed` → return 422 with body `{ status: 'failed' }`.
-     - `pending` (impossible after the UPDATE; treat as 500).
-5. `HEAD events/<eventId>/pending/<photoId>.bin` → 404 if missing (was lifecycle-purged), set `state='failed'`, return 410.
+     - `pending` (impossible after the UPDATE — would have matched the claim) → treat as 500.
+6. `HEAD events/<eventId>/pending/<photoId>.bin` → 404 if missing (was lifecycle-purged), set `state='failed'`, return 410.
 6. `Content-Length ≤ 25 MB` → else set `state='failed'`, delete pending, return 413.
 
 **Sharp failure:**
@@ -219,7 +244,9 @@ Browser                  Next.js API              R2                     Postgre
 
 **Read-path errors (per-photo download):** `GET /api/photos/:id/original` returns 401/403/404; in Phase 2 caller must be `row.uploaderUserId` (host/visibility-mode broadening is Phase 5). Returns 404 for both "not found" and "uploader mismatch" — no existence oracle. There is no `/preview` route — preview URLs are presigned at gallery render time and embedded in HTML; non-uploaders never see them.
 
-**Pending row leftover:** A row stuck in `state='pending'` after 24h (browser crashed, finalize never came) gets cleaned up by Phase 6's cron: `DELETE FROM photos WHERE processing_state IN ('pending', 'processing') AND pending_expires_at < now()`. Phase 2 ships the column; Phase 6 ships the cleaner. Stale rows accumulate slowly enough that Phase 2 can ignore them.
+**Pending / stranded row leftover:** A row stuck in `state='pending'` after 24h (browser crashed, finalize never came) — or stranded in `processing` because a finalize crashed mid-Sharp — is handled in two ways:
+- **In Phase 2:** finalize's TTL check (validation step 4) fails-fast on expired rows; the atomic claim's stale-reclaim clause (step 5) lets retries take over `processing` rows older than 5 min. So in practice, a user retrying upload of a stranded photo recovers automatically.
+- **In Phase 6:** a daily cron does the bulk cleanup: `DELETE FROM photos WHERE processing_state IN ('pending', 'processing') AND pending_expires_at < now()`. The cap-count query (init step 6) already excludes expired pending rows, so cap pressure from stale rows is bounded to 24h × upload rate even before the cron runs.
 
 **Out of scope for Phase 2:**
 - Resumable uploads — Phase 6 if attendees complain.
@@ -295,6 +322,7 @@ What's intentionally **not** in Phase 2 (Phase 3+):
 - Bulk download — Phase 5.
 - Email notifications on new uploads — Phase 6.
 - Cleanup of `failed` rows + their R2 objects — Phase 6.
+- **Init idempotency keys** — explicitly deferred. Phase 2 accepts that a browser-retried `init` may consume two slots against the cap until the orphan's `pendingExpiresAt` passes. Mitigations already in place: cap-count query excludes expired pending rows, finalize's stale-reclaim auto-recovers `processing` rows, and the upload UI's batched concurrency makes retries rare. Add idempotency keys in Phase 6 if real-world retry rates make the cap leak material.
 
 ---
 
@@ -319,3 +347,13 @@ Codex round-2 review surfaced 4 follow-on issues from the round-1 fixes. All add
 2. **Finalize race could overwrite `ready` with `failed`.** Two concurrent finalize calls both passed `state='pending'` and ran Sharp; the loser could overwrite the winner. **Fix:** added atomic claim — `UPDATE … SET state='processing' WHERE id=$1 AND state='pending' RETURNING *`. Added `'processing'` as a fourth state. Idempotent re-finalize branches on observed state (processing → 409, ready → 200, failed → 422).
 3. **No pending-row TTL or cleanup path.** **Fix:** added `pendingExpiresAt` column (= createdAt + 24h, mirroring R2 lifecycle). Documented Phase 6 cleanup query. Init idempotency keys deferred (YAGNI for MVP — UI's batch-of-3 retry is fine).
 4. **Streaming previews through Next.js was a cost cliff.** 50K+ serverless invocations per browse session at moderate scale. **Fix:** dropped `/api/photos/:id/preview` route. Server component now mints 5-minute presigned GET URLs at gallery render time and embeds them directly in `<img src>`. Browser fetches each preview straight from R2. Auth happens once (at the gallery DB query) — non-uploaders' HTML contains zero photo URLs. Trade-off: a presigned URL leaked within its 5-min window grants the photo, equivalent to the attendee screenshotting and sharing.
+
+## Review changes (round 3, 2026-04-30)
+
+Codex round-3 review found 1 new Important and 3 partial-resolutions from round 2. All addressed:
+
+1. **NEW Important: stuck `processing` state after crash/timeout.** A finalize that died after the atomic claim left the row stranded in `processing`; retries got `409 {status:'processing'}` permanently. **Fix:** added `processingClaimedAt` column. Atomic claim now reclaims rows whose claim is older than 5 minutes — longer than any realistic Sharp run on Vercel's max function timeout. Stranded rows self-heal on the next user retry.
+2. **Decision #8 wording was internally inconsistent** — still said "preview and original served through Next.js routes" after we dropped /preview. **Fix:** updated to describe presigned-at-render previews + 302-redirect for originals.
+3. **Cap-count query counted expired pending rows**, letting an event hit 5000 cap with stale tombstones. **Fix:** init's count query now filters `processing_state IN ('ready', 'processing') OR (state='pending' AND pending_expires_at > now())`. Expired pending rows don't pressure the cap.
+4. **No early rejection of expired pending in finalize.** Finalize would proceed into Sharp work on rows whose R2 pending object had been lifecycle-purged. **Fix:** added validation step 4 that returns 410 + sets `state='failed'` if `pendingExpiresAt < now()`.
+5. **Init idempotency keys**: explicitly deferred to Phase 6 with a paragraph in the "Out of scope" section explaining the mitigations already in place.
