@@ -33,13 +33,24 @@ Builds on Phase 1 (`docs/plans/2026-04-27-photo-courier-implementation.md`). Set
 - Node runtime on photo routes (`export const runtime = 'nodejs'`).
 
 **Three write API routes:**
-1. `POST /api/events/:id/photos/init` — validates membership, MIME, declared size, event cap (with row lock). **Inserts a `photos` row** with `processingState='pending'`, returns presigned PUT URL pointing at `events/<eventId>/pending/<photoId>.bin`.
+1. `POST /api/events/:id/photos/init` — validates membership, MIME, declared size, event cap (with row lock). **Inserts a `photos` row** with `processingState='pending'` and `pendingExpiresAt = now() + 24h`. Returns presigned PUT URL pointing at `events/<eventId>/pending/<photoId>.bin`.
 2. Browser uploads bytes directly to R2 via presigned URL. App-server bandwidth = zero.
-3. `POST /api/events/:id/photos/:photoId/finalize` — loads the `photos` row, **verifies the row's `uploaderUserId` matches the caller** (closes IDOR), HEADs the pending object to enforce real size, fetches it, runs Sharp, writes original/preview, deletes pending, sets `processingState='ready'` + final metadata.
+3. `POST /api/events/:id/photos/:photoId/finalize` — loads the `photos` row, **verifies the row's `uploaderUserId` matches the caller** (closes IDOR), then **atomically claims** the row: `UPDATE photos SET processingState='processing' WHERE id=$1 AND processingState='pending' RETURNING *`. If the claim returns nothing, another finalize already won — return idempotent response based on current state. After claim: HEADs the pending object to enforce real size, fetches it, runs Sharp, writes original/preview, deletes pending, sets `processingState='ready'` + final metadata.
 
-**Two read API routes:**
-4. `GET /api/photos/:photoId/preview` — checks membership in the photo's event, streams `preview/<id>.jpg` bytes from R2 through Next.js to browser. No URL leakage.
-5. `GET /api/photos/:photoId/original` — same auth, streams the original. Used by per-photo download in Phase 5; in Phase 2 only available to the uploader (their "By Me" tab).
+**Read path (no streaming through Next.js):**
+
+Gallery rendering uses **presigned GET URLs minted at server-component render time**, with 5-minute TTL. The server component runs the gallery query (uploader-only in Phase 2), and for each `ready` row it generates a presigned URL pointing at `preview/<id>.jpg`. URLs go straight into the HTML as `<img src="https://<bucket>.r2.cloudflarestorage.com/...?X-Amz-Signature=...">`. The browser fetches each preview directly from R2; no per-image serverless invocation, no R2 bandwidth through us.
+
+Auth: enforced once, at render-time DB query. Non-uploaders never see URLs in their HTML at all (their gallery returns zero rows).
+
+For per-photo download (Phase 5 surface, but the route ships in Phase 2 for the uploader's "By Me" download button):
+
+4. `GET /api/photos/:photoId/original` — checks `caller is uploader` (Phase 2; Phase 5 broadens with visibility-mode rules), 302-redirects to a freshly-minted 5-minute presigned GET URL. One serverless invocation per click — fine, low frequency.
+
+**Why presigned-at-render, not stream-through-Next.js:**
+- 1000 photos × 50 attendees on the gallery page = 50K serverless invocations + bandwidth per browse session if we streamed. Vercel free tier is 100K invocations/mo total. Cliff in weeks.
+- Presigned-at-render: one render per page load (≤1 invocation per attendee), zero R2 bandwidth through us, browser cache works because the URL is stable for 5 minutes.
+- Trade-off: a presigned URL leaked within its 5-min window grants the photo to anyone. Acceptable — same trust boundary as the attendee screenshotting and sharing the photo themselves.
 
 **Storage layout in R2** (event-scoped prefixes for trivial per-event cleanup):
 - `events/<eventId>/pending/<photoId>.bin` — transient, lifecycle-purged at 24 h.
@@ -64,13 +75,18 @@ export const photos = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
 
-    // State machine. 'pending' inserted at init; 'ready' on successful
-    // finalize; 'failed' on Sharp error / size cap exceeded post-PUT.
+    // State machine. 'pending' inserted at init; 'processing' atomically
+    // claimed by finalize; 'ready' on successful finalize; 'failed' on
+    // Sharp error / size cap exceeded post-PUT.
     processingState: text('processing_state', {
-      enum: ['pending', 'ready', 'failed'],
+      enum: ['pending', 'processing', 'ready', 'failed'],
     })
       .notNull()
       .default('pending'),
+
+    // Pending row expiry — mirrors R2 lifecycle; Phase 6 cleanup deletes
+    // rows where state='pending' and pendingExpiresAt < now().
+    pendingExpiresAt: timestamp('pending_expires_at'),  // set at init, cleared on finalize
 
     // R2 keys
     pendingKey: text('pending_key'),                    // set at init, cleared on finalize
@@ -107,7 +123,7 @@ export const photos = pgTable(
 ```
 
 **Notes:**
-- Three states: `pending` (init done, awaiting bytes / Sharp), `ready` (gallery-visible), `failed` (terminal error). Failed rows stay for debugging; lifecycle cleanup deletes them in Phase 6.
+- Four states: `pending` (init done, awaiting bytes / Sharp), `processing` (finalize has atomically claimed, Sharp running), `ready` (gallery-visible), `failed` (terminal error). Failed rows stay for debugging; cleanup deletes them in Phase 6.
 - `r2Key*` and image dimensions are nullable because they're populated only on `ready`.
 - `(uploaderUserId, eventId)` index serves the Phase 2 "By Me" query.
 - `(eventId, processingState)` index serves Phase 3's "find pending photos to process" query.
@@ -143,6 +159,11 @@ Browser                  Next.js API              R2                     Postgre
    │                          ├─────────────────────────────────────────────►│
    │                          │  ◄── row ───────────────────────────────────│
    │                          │  assert row.uploaderUserId === caller        │
+   │                          │  ATOMIC CLAIM:                               │
+   │                          │  UPDATE photos SET state='processing'        │
+   │                          │   WHERE id=$1 AND state='pending' RETURNING *│
+   │                          ├─────────────────────────────────────────────►│
+   │                          │  if no row returned → idempotent branch      │
    │                          │  HEAD pending/    │                         │
    │                          ├───────────────────►│                         │
    │                          │  ◄── content-length, abort if >25 MB         │
@@ -156,7 +177,7 @@ Browser                  Next.js API              R2                     Postgre
    │                          ├───────────────────►│                         │
    │                          │  DELETE pending/   │                         │
    │                          ├───────────────────►│                         │
-   │                          │  UPDATE photos SET state='ready', uploadedAt=now(), r2Key*, width, height, takenAt
+   │                          │  UPDATE photos SET state='ready', uploadedAt=now(), r2Key*, width, height, takenAt, pendingKey=NULL, pendingExpiresAt=NULL
    │                          ├─────────────────────────────────────────────►│
    │ ◄────{photo: {...}}──────┤                    │                         │
 ```
@@ -179,7 +200,13 @@ Browser                  Next.js API              R2                     Postgre
 1. Authenticated → else 401.
 2. `SELECT photos WHERE id=$1` → 404 if missing.
 3. `row.uploaderUserId === currentUser.id` → else 403 (closes IDOR; even if the photoId is guessed, only the original uploader can finalize).
-4. `row.processingState === 'pending'` → else if `'ready'` return existing row (idempotent); else 409.
+4. **Atomic claim:** `UPDATE photos SET processingState='processing' WHERE id=$1 AND processingState='pending' RETURNING *`.
+   - If a row is returned: caller owns processing, continue to step 5.
+   - If no row is returned: re-read by id and branch on observed state:
+     - `processing` → another concurrent finalize is running; return 409 with body `{ status: 'processing' }`.
+     - `ready` → idempotent success: return existing row.
+     - `failed` → return 422 with body `{ status: 'failed' }`.
+     - `pending` (impossible after the UPDATE; treat as 500).
 5. `HEAD events/<eventId>/pending/<photoId>.bin` → 404 if missing (was lifecycle-purged), set `state='failed'`, return 410.
 6. `Content-Length ≤ 25 MB` → else set `state='failed'`, delete pending, return 413.
 
@@ -190,7 +217,9 @@ Browser                  Next.js API              R2                     Postgre
 
 **Orientation:** `sharp(...).rotate()` (no args) auto-rotates per EXIF and strips the tag. Both objects render upright everywhere.
 
-**Read-path errors (preview/original):** `GET /api/photos/:id/preview` returns 401/403/404; never leaks key existence (404 for both "not found" and "not a member").
+**Read-path errors (per-photo download):** `GET /api/photos/:id/original` returns 401/403/404; in Phase 2 caller must be `row.uploaderUserId` (host/visibility-mode broadening is Phase 5). Returns 404 for both "not found" and "uploader mismatch" — no existence oracle. There is no `/preview` route — preview URLs are presigned at gallery render time and embedded in HTML; non-uploaders never see them.
+
+**Pending row leftover:** A row stuck in `state='pending'` after 24h (browser crashed, finalize never came) gets cleaned up by Phase 6's cron: `DELETE FROM photos WHERE processing_state IN ('pending', 'processing') AND pending_expires_at < now()`. Phase 2 ships the column; Phase 6 ships the cleaner. Stale rows accumulate slowly enough that Phase 2 can ignore them.
 
 **Out of scope for Phase 2:**
 - Resumable uploads — Phase 6 if attendees complain.
@@ -215,9 +244,11 @@ WHERE event_id = $1
 ORDER BY taken_at DESC NULLS LAST, created_at DESC
 ```
 
-The gallery renders thumbnails as `<img src="/api/photos/<id>/preview">`. Each request does a fresh membership check. No bypass.
+The server component runs the query above, then for each row generates a 5-minute presigned GET URL pointing at `preview/<id>.jpg`. URLs are embedded directly: `<img src="https://<bucket>.r2.cloudflarestorage.com/...?X-Amz-Signature=...">`. Browser fetches each preview straight from R2 — zero serverless invocations, zero R2 bandwidth through us per image. Non-uploaders' gallery query returns no rows, so no URLs are ever minted for them.
 
-This is the minimum view that's both useful (uploader sees their uploads land) and privacy-safe (no cross-uploader exposure before face matching ships). Phase 5 builds the You / By Me / Other tabs on top of this same plumbing.
+The "Download original" button on each photo points at `/api/photos/<id>/original`, which auth-checks (uploader-only in Phase 2) and 302-redirects to a freshly-minted 5-minute presigned GET URL.
+
+This is the minimum view that's both useful (uploader sees their uploads land) and privacy-safe. Phase 5 reuses the presigned-at-render pattern: the gallery query expands to include matched photos / uploader's photos / "no people" photos per the visibility mode, and the rest of the plumbing (URL minting, embedding) stays identical.
 
 ---
 
@@ -231,8 +262,9 @@ This is the minimum view that's both useful (uploader sees their uploads land) a
 
 **Integration (Vitest + Docker test DB, R2 mocked at module level):**
 - `init` route — happy path + 401, 403, 410, 400, 413, 429. Concurrency stress test on 5000-cap boundary (10 parallel inits, exactly 5000 succeed, others get 429).
-- `finalize` route — happy path inserts/updates row + uploader check returns 403 + idempotent re-call returns same row + size cap exceeded post-PUT returns 413 + Sharp failure returns 422.
-- `GET /api/photos/:id/preview` — 401, 403 (non-member), 404 (missing), 200 + correct bytes for member.
+- `finalize` route — happy path transitions `pending→processing→ready` + uploader check returns 403 + atomic-claim race (two parallel finalize calls: one wins with 200, the other gets 409 `{status:'processing'}` or idempotent `{status:'ready'}`) + size cap exceeded post-PUT returns 413 + Sharp failure leaves row in `failed`.
+- `GET /api/photos/:id/original` — 401, 403 (non-uploader), 404 (missing or wrong uploader — same response), 302 with valid presigned Location for uploader.
+- Gallery server component — generates correct number of presigned URLs (= row count); URLs are valid for 5 min; non-uploader's HTML contains zero photo URLs.
 - S3 client faked via `vi.mock` pointing at an in-memory `Map<key, Buffer>`.
 
 **E2E (Playwright):**
@@ -249,7 +281,8 @@ This is the minimum view that's both useful (uploader sees their uploads land) a
 - R2 bucket configured **private** with `events/{eventId}/pending/` lifecycle rule + CORS allowing localhost origins. No public dev URL.
 - `lib/photos/process.ts`, `lib/photos/r2.ts` with full test coverage.
 - `/api/events/:id/photos/init`, `/api/events/:id/photos/:photoId/finalize` — TDD'd.
-- `/api/photos/:photoId/preview`, `/api/photos/:photoId/original` — auth-checked streaming routes.
+- `/api/photos/:photoId/original` — auth-checked 302-redirect to short-lived presigned GET URL (uploader-only in Phase 2).
+- Server-component-side preview URL minting (5-min presigned GET URLs embedded in gallery HTML).
 - Upload UI on `/events/[id]` page (host + attendee). Drag-and-drop, multi-select, batch-of-3, aggregate progress.
 - "By Me" gallery on the same page: thumbnails sorted by `taken_at desc nulls last, created_at desc`.
 - Playwright e2e covering full upload happy path + thumbnail render.
@@ -277,3 +310,12 @@ Codex review surfaced 8 issues. All addressed in this revision:
 6. **Important — cap race underspecified:** Init now runs inside a transaction with `SELECT events FOR UPDATE` before counting/inserting.
 7. **Important — gallery scope ambiguous:** Phase 2 read surface restricted to uploader-only "By Me." Full visibility-mode gallery moved to Phase 5 explicitly.
 8. **Important — schema gaps:** Added `uploadedAt`, `deletedAt`, `originalFilename`, `declaredMimeType`, `declaredSizeBytes`. Storage keys event-scoped (`events/<eventId>/...`).
+
+## Review changes (round 2, 2026-04-30)
+
+Codex round-2 review surfaced 4 follow-on issues from the round-1 fixes. All addressed:
+
+1. **Phase 2 read auth was broader than gallery scope.** Read route checked event-membership while gallery only showed uploader's own photos — an attendee could enumerate `/api/photos/:id/preview` for other attendees' uploads. **Fix:** dropped the `/preview` route entirely (see #4 below). The remaining `/api/photos/:id/original` route now requires `caller is uploader` in Phase 2; Phase 5 broadens.
+2. **Finalize race could overwrite `ready` with `failed`.** Two concurrent finalize calls both passed `state='pending'` and ran Sharp; the loser could overwrite the winner. **Fix:** added atomic claim — `UPDATE … SET state='processing' WHERE id=$1 AND state='pending' RETURNING *`. Added `'processing'` as a fourth state. Idempotent re-finalize branches on observed state (processing → 409, ready → 200, failed → 422).
+3. **No pending-row TTL or cleanup path.** **Fix:** added `pendingExpiresAt` column (= createdAt + 24h, mirroring R2 lifecycle). Documented Phase 6 cleanup query. Init idempotency keys deferred (YAGNI for MVP — UI's batch-of-3 retry is fine).
+4. **Streaming previews through Next.js was a cost cliff.** 50K+ serverless invocations per browse session at moderate scale. **Fix:** dropped `/api/photos/:id/preview` route. Server component now mints 5-minute presigned GET URLs at gallery render time and embeds them directly in `<img src>`. Browser fetches each preview straight from R2. Auth happens once (at the gallery DB query) — non-uploaders' HTML contains zero photo URLs. Trade-off: a presigned URL leaked within its 5-min window grants the photo, equivalent to the attendee screenshotting and sharing.
