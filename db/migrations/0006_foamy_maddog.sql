@@ -24,10 +24,10 @@ CREATE TABLE "face_detections" (
 );
 --> statement-breakpoint
 ALTER TABLE "face_clusters" ADD CONSTRAINT "face_clusters_event_id_events_id_fk" FOREIGN KEY ("event_id") REFERENCES "public"."events"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "face_clusters" ADD CONSTRAINT "face_clusters_representative_detection_id_face_detections_id_fk" FOREIGN KEY ("representative_detection_id") REFERENCES "public"."face_detections"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "face_clusters" ADD CONSTRAINT "face_clusters_claimed_by_user_id_users_id_fk" FOREIGN KEY ("claimed_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "face_detections" ADD CONSTRAINT "face_detections_photo_id_photos_id_fk" FOREIGN KEY ("photo_id") REFERENCES "public"."photos"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "face_detections" ADD CONSTRAINT "face_detections_cluster_id_face_clusters_id_fk" FOREIGN KEY ("cluster_id") REFERENCES "public"."face_clusters"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "face_detections_embedding_idx" ON "face_detections" USING ivfflat ("embedding" vector_cosine_ops) WITH (lists=100);--> statement-breakpoint
--- Circular back-reference: face_clusters.representative_detection_id → face_detections.id.
--- Added after both tables and all other FKs exist to avoid dependency-ordering issues.
-ALTER TABLE "face_clusters" ADD CONSTRAINT "face_clusters_representative_detection_id_fk" FOREIGN KEY ("representative_detection_id") REFERENCES "public"."face_detections"("id") ON DELETE set null ON UPDATE no action;
+CREATE INDEX "face_clusters_event_id_idx" ON "face_clusters" USING btree ("event_id");--> statement-breakpoint
+CREATE INDEX "face_detections_photo_id_idx" ON "face_detections" USING btree ("photo_id");--> statement-breakpoint
+CREATE INDEX "face_detections_embedding_idx" ON "face_detections" USING ivfflat ("embedding" vector_cosine_ops) WITH (lists=100);

@@ -1,5 +1,5 @@
 {
-  "id": "b215477e-38cd-4096-9f38-4fad46ec380a",
+  "id": "2432b3e2-d666-4e29-af1c-75ea519164ab",
   "prevId": "24816fb3-27ae-4af7-85e1-47d674b1a92b",
   "version": "7",
   "dialect": "postgresql",
@@ -214,7 +214,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "face_clusters_event_id_idx": {
+          "name": "face_clusters_event_id_idx",
+          "columns": [
+            {
+              "expression": "event_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "face_clusters_event_id_events_id_fk": {
           "name": "face_clusters_event_id_events_id_fk",
@@ -227,6 +243,19 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "face_clusters_representative_detection_id_face_detections_id_fk": {
+          "name": "face_clusters_representative_detection_id_face_detections_id_fk",
+          "tableFrom": "face_clusters",
+          "tableTo": "face_detections",
+          "columnsFrom": [
+            "representative_detection_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
           "onUpdate": "no action"
         },
         "face_clusters_claimed_by_user_id_users_id_fk": {
@@ -323,6 +352,21 @@
         }
       },
       "indexes": {
+        "face_detections_photo_id_idx": {
+          "name": "face_detections_photo_id_idx",
+          "columns": [
+            {
+              "expression": "photo_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "face_detections_embedding_idx": {
           "name": "face_detections_embedding_idx",
           "columns": [

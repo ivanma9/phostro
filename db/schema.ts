@@ -1,4 +1,5 @@
 import {
+  type AnyPgColumn,
   boolean,
   check,
   customType,
@@ -171,45 +172,35 @@ export const photoJobs = pgTable(
   ],
 )
 
-// CIRCULAR FK PAIR — read carefully before modifying.
-//
-//   face_detections.cluster_id            → face_clusters.id    (ON DELETE SET NULL)
-//   face_clusters.representative_detection_id → face_detections.id (ON DELETE SET NULL)
-//
-// Drizzle 0.45's TypeScript types cannot resolve a fully circular FK pair when both
-// sides use inline `.references()` — the compiler raises TS7022/TS7024 because each
-// table's type depends on the other's. To work around this we:
-//   1. Declare faceClusters FIRST. faceDetections.clusterId references it via the
-//      lazy `.references(() => faceClusters.id)` form (Drizzle resolves the thunk at
-//      codegen time, so forward reference is fine).
-//   2. Declare face_clusters.representative_detection_id as a plain uuid() column with
-//      NO inline FK. The back-reference is appended to the generated migration as a
-//      raw ALTER TABLE statement (see 0006_*.sql).
-//
-// SNAPSHOT DRIFT WARNING: the back-FK is NOT tracked in db/migrations/meta/*.json.
-// Consequence: `pnpm db:generate` will not see this FK in the schema model, so any
-// future edit that *adds* the FK to faceClusters via foreignKey()/.references() will
-// produce a duplicate ADD CONSTRAINT migration. If you need to modify this FK, edit
-// the SQL of migration 0006 OR write a new explicit migration. Do NOT add the FK to
-// the Drizzle schema and regenerate — it will not converge.
-export const faceClusters = pgTable('face_clusters', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  eventId: uuid('event_id')
-    .notNull()
-    .references(() => events.id, { onDelete: 'cascade' }),
-  // Nullable; recomputed by clustering job. FK to face_detections.id added in
-  // migration 0006 as raw ALTER TABLE — see comment block above.
-  representativeDetectionId: uuid('representative_detection_id'),
-  representativeEmbedding: vector('representative_embedding', 128).notNull(),
-  memberCount: integer('member_count').notNull().default(1),
-  // Phase 4 sets this; intentionally NULL in Phase 3.
-  // ON DELETE SET NULL: if the user account is deleted the cluster stays unclaimed.
-  claimedByUserId: uuid('claimed_by_user_id').references(() => users.id, {
-    onDelete: 'set null',
-  }),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
-})
+// CIRCULAR FK PAIR: face_detections.cluster_id → face_clusters.id and
+// face_clusters.representative_detection_id → face_detections.id.
+// Both FKs use the AnyPgColumn thunk annotation to break the TS7022/TS7024
+// circular-reference cycle. Drizzle 0.45 resolves thunks at codegen time so
+// both FKs are emitted natively by drizzle-kit — no hand-appended SQL needed.
+export const faceClusters = pgTable(
+  'face_clusters',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    // Nullable; recomputed by clustering job.
+    representativeDetectionId: uuid('representative_detection_id').references(
+      (): AnyPgColumn => faceDetections.id,
+      { onDelete: 'set null' },
+    ),
+    representativeEmbedding: vector('representative_embedding', 128).notNull(),
+    memberCount: integer('member_count').notNull().default(1),
+    // Phase 4 sets this; intentionally NULL in Phase 3.
+    // ON DELETE SET NULL: if the user account is deleted the cluster stays unclaimed.
+    claimedByUserId: uuid('claimed_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('face_clusters_event_id_idx').on(t.eventId)],
+)
 
 export const faceDetections = pgTable(
   'face_detections',
@@ -233,6 +224,10 @@ export const faceDetections = pgTable(
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },
   (t) => [
+    index('face_detections_photo_id_idx').on(t.photoId),
+    // lists=100 from pgvector docs (≈rows/1000) — over-tuned at MVP scale; revisit
+    // when face_detections exceeds ~50k rows per event. The planner often prefers
+    // seq-scan over this index at low row counts, which is correct behavior.
     index('face_detections_embedding_idx')
       .using('ivfflat', t.embedding.op('vector_cosine_ops'))
       .with({ lists: 100 }),

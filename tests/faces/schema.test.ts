@@ -81,7 +81,9 @@ test('round-trip: insert face_clusters + face_detections with 128-d embedding an
   const rows = await db.select().from(faceDetections).where(sql`id = ${det.id}`)
   expect(rows).toHaveLength(1)
   expect(rows[0].embedding).toHaveLength(DIM)
-  expect(rows[0].embedding[0]).toBeCloseTo(0 / DIM, 5)
+  for (let i = 0; i < DIM; i++) {
+    expect(rows[0].embedding[i]).toBeCloseTo(i / DIM, 6)
+  }
 })
 
 test('pgvector rejects embedding with wrong dimension (127 floats)', async () => {
