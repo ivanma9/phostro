@@ -107,6 +107,7 @@ export async function claimNextJob(
   if (raw.prev_state === 'claimed') {
     console.warn({
       event: 'worker.job.reclaimed',
+      photoId: raw.photo_id,
       jobId: raw.id,
       previousClaimedBy: raw.prev_claimed_by,
       previousAttempts: raw.prev_attempts,

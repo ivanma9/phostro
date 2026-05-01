@@ -50,6 +50,7 @@ test('claimNextJob: claims a queued job, sets state=claimed, claimed_at, claimed
   const { p } = await seedFixtures()
   await insertQueuedJob(p.id)
 
+  const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
   const job = await claimNextJob('worker-1', 120)
 
   expect(job).not.toBeNull()
@@ -57,6 +58,14 @@ test('claimNextJob: claims a queued job, sets state=claimed, claimed_at, claimed
   expect(job!.claimedBy).toBe('worker-1')
   expect(job!.claimedAt).not.toBeNull()
   expect(job!.attempts).toBe(1)
+
+  // Negative case: a fresh queued claim must NOT emit worker.job.reclaimed.
+  const reclaimedCalls = warnSpy.mock.calls.filter(
+    (args) =>
+      args[0] && typeof args[0] === 'object' && (args[0] as { event?: string }).event === 'worker.job.reclaimed',
+  )
+  expect(reclaimedCalls).toHaveLength(0)
+  warnSpy.mockRestore()
 })
 
 // Test 2: concurrent claimers receive distinct jobs
@@ -121,6 +130,7 @@ test('claimNextJob: reclaims a stuck claimed job past claim_timeout and emits wa
   )
   expect(reclaimLog).toBeDefined()
   expect(reclaimLog![0].jobId).toBe(job!.id)
+  expect(reclaimLog![0].photoId).toBe(p.id)
   expect(reclaimLog![0].previousClaimedBy).toBe('dead-worker')
 
   warnSpy.mockRestore()
