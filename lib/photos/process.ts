@@ -46,7 +46,6 @@ export async function processImage(buf: Buffer): Promise<ProcessImageResult> {
     const upright = sharp(buf, { failOn: 'truncated' }).rotate()
     const original = await upright
       .clone()
-      .withMetadata({})
       .jpeg({ quality: ORIGINAL_QUALITY, mozjpeg: true })
       .toBuffer({ resolveWithObject: true })
 
@@ -58,7 +57,6 @@ export async function processImage(buf: Buffer): Promise<ProcessImageResult> {
         fit: 'inside',
         withoutEnlargement: true,
       })
-      .withMetadata({})
       .jpeg({ quality: PREVIEW_QUALITY, mozjpeg: true })
       .toBuffer()
 

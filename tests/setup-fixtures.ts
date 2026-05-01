@@ -30,8 +30,11 @@ async function gen() {
   const withGps = await sharp({
     create: { width: 800, height: 600, channels: 3, background: { r: 100, g: 200, b: 50 } },
   })
+    // Sharp 0.34's withExif uses `IFD3` for the GPS sub-IFD; `GPS` is silently
+    // dropped (and now type-rejected). Verified end-to-end: exifr.gps() reads
+    // 37.775, -122.419 from the resulting JPEG.
     .withExif({
-      GPS: {
+      IFD3: {
         GPSLatitudeRef: 'N',
         GPSLatitude: '37/1, 46/1, 30/1',
         GPSLongitudeRef: 'W',
