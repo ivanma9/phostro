@@ -21,6 +21,10 @@ function client(): S3Client {
     region: 'auto',
     endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
     credentials: { accessKeyId, secretAccessKey },
+    // R2 rejects the AWS SDK v3 default `x-amz-checksum-crc32` header that
+    // gets baked into presigned PUT URLs; opt out so browser uploads work.
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
   })
   return cached
 }
