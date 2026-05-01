@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { POST } from '@/app/api/events/[id]/photos/[photoId]/finalize/route'
 import { db } from '@/db'
-import { eventMembers, events, photos, users } from '@/db/schema'
+import { eventMembers, events, photoJobs, photos, users } from '@/db/schema'
 import * as currentUser from '@/lib/auth/current-user'
 
 const FIX = join(__dirname, '../fixtures/photos')
@@ -67,6 +67,7 @@ async function insertPending(eventId: string, uploaderUserId: string, filename =
 
 beforeEach(async () => {
   store.clear()
+  await db.delete(photoJobs)
   await db.delete(photos)
   await db.delete(eventMembers)
   await db.delete(events)
@@ -210,6 +211,21 @@ describe('POST /api/events/:id/photos/:photoId/finalize', () => {
     expect(res.status).toBe(409)
     const body = await res.json()
     expect(body.status).toBe('processing')
+  })
+
+  test('after successful finalize, a photo_jobs row exists with kind=detect, state=queued', async () => {
+    const { host, event } = await seed()
+    const row = await insertPending(event.id, host.id)
+    store.set(row.pendingKey, readFileSync(join(FIX, 'plain.jpg')))
+    vi.spyOn(currentUser, 'getCurrentUser').mockResolvedValue(host)
+
+    const res = await post(event.id, row.id)
+    expect(res.status).toBe(200)
+
+    const [job] = await db.select().from(photoJobs).where(eq(photoJobs.photoId, row.id))
+    expect(job).toBeDefined()
+    expect(job.kind).toBe('detect')
+    expect(job.state).toBe('queued')
   })
 
   test('markFailed does not overwrite a row already in ready state', async () => {
