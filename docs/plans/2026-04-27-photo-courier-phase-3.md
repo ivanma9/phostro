@@ -37,7 +37,7 @@ These belong to Phase 4 or later. Do **not** unblock them here.
 
 - Multi-angle enrollment capture UX, MediaPipe Face Mesh guidance, consent modal copy (Phase 4).
 - The `/enroll` worker endpoint behavior beyond a stub returning 501 (Phase 4 fills it in once enrollment UI exists). The endpoint *route* exists from Phase 3 so the contract is locked; the implementation is Phase 4.
-- `User.face_embedding` writes — Phase 3 only writes `face_detections` rows and event-scoped clusters; user-level face profiles come from enrollment (Phase 4).
+- `User.face_embedding` writes — Phase 3 only writes `face_detections` rows and event-scoped clusters; user-level face profiles come from explicit enrollment in Phase 4, not from regular event-photo uploads.
 - pgvector `<=>` retrieval queries for "photos of you" — Phase 4.
 - `FaceCluster.claimed_by_user_id`, `representative_thumb` — Phase 4 wires these once enrollment lands.
 - Gallery tabs, diff downloads, `PhotoView`/`PhotoSave` (Phase 5).
@@ -47,6 +47,16 @@ These belong to Phase 4 or later. Do **not** unblock them here.
 - Switching to SQS / a hosted queue — revisit only if `photo_jobs` polling becomes a measurable bottleneck.
 - A full admin UI for failed jobs — Phase 3 ships the SQL view and structured logs only.
 - PhotoDNA / Safer integration (post-MVP).
+
+---
+
+## Kickoff decisions resolved on 2026-05-01
+
+1. **What Phase 3 actually does:** Phase 3 is the **photo-side recognition pipeline only**. It consumes Phase 2 `ready` photos, enqueues async `detect` jobs, runs detection + alignment + 128-d embedding extraction on the preview asset, writes `face_detections` plus event-scoped `face_clusters`, and flips `photos.has_detected_faces`. It does **not** populate `users.face_embedding`, run "photos of you" retrieval queries, or ship attendee enrollment UX; those remain Phase 4 work.
+2. **Recognition library / runtime:** Stay with the repo's existing **Python + ONNX Runtime** lane: RetinaFace `det_10g.onnx` for detection plus SFace `face_recognition_sface_2021dec.onnx` for embeddings, exposed through the FastAPI worker and reusing `bench/src/detect.py` + `bench/src/embed.py`. Do **not** switch Phase 3 to `face-api.js`, `@vladmandic/face-api`, AWS Rekognition, or Cloudflare Workers AI. The current bench harness, thresholding workflow, and privacy posture are already built around the self-hosted ONNX path; changing stacks here would fork the evaluation lane and add avoidable vendor/runtime surface before beta.
+3. **Sync vs async:** Recognition is **async**. `POST /api/events/:id/photos/:photoId/finalize` stays Phase 2's synchronous upload→preview step. Phase 3 begins only after finalize marks the photo `ready` and enqueues a `photo_jobs` row. Detection/embedding/clustering run in the worker so retries, crash recovery, dead-lettering, and operator visibility all live outside the attendee request path.
+4. **Self-enrollment flow:** Enrollment is **explicit and separate** from normal uploads. The canonical `users.face_embedding` is created by the Phase 4 consented multi-angle enrollment flow (`POST /enroll` over ephemeral selfie frames), not during sign-in and not by mining a user's first uploaded event photo. Attendees can upload without enrolling; enrollment is triggered when they opt into the "You" retrieval flow.
+5. **Which draft to start from:** Use **this document** as the Phase 3 starting point. `docs/plans/2026-04-27-photo-courier-phase-3.md` is the working baseline because it already reconciles earlier plan drift against current main (for example: `photo_jobs` was not actually shipped in Phase 2). Earlier Phase 2 / implementation docs remain rationale and cross-checks, not the execution source of truth.
 
 ---
 
@@ -63,10 +73,15 @@ These belong to Phase 4 or later. Do **not** unblock them here.
 
 ## Cross-phase contracts
 
-**Phase 2 produces (consumed by Phase 3):**
-- `photos` table rows with `id`, `event_id`, `uploader_user_id`, `r2_key_original`, `r2_key_preview`, `width`, `height`, `taken_at`, `has_detected_faces=null`.
-- `lib/r2/client.ts` exposing `presignGet(key, ttl)` for short-lived GET URLs.
-- A Phase 2 hook that calls `enqueuePhotoJob(photoId)` after successful upload registration.
+**Phase 2 produces (consumed by Phase 3) — verified against current main:**
+- `photos` table rows with `id`, `event_id`, `uploader_user_id`, `r2_key_original`, `r2_key_preview`, `width`, `height`, `taken_at`, `has_detected_faces=null`. ✓
+- `photos.processing_state` ∈ `{pending, processing, ready, failed}` tracking the *upload→preview* state machine. **This column belongs to Phase 2.** Phase 3 only *reads* it (claim photos where `processing_state='ready'`); Phase 3 must never write to it.
+- `lib/photos/r2.ts` exposing `createPresignedGetUrl(key, ttl)`, `getObjectBuffer(key)`, `putObject(key, body, contentType)`, `deleteObject(key)`. Phase 3 imports these (note: not `lib/r2/client.ts:presignGet` as earlier drafts said).
+- `app/api/events/[id]/photos/[photoId]/finalize/route.ts` runs Sharp synchronously and sets `processing_state='ready'` on success. **Phase 3 edits this route to call `enqueuePhotoJob(photoId)` after the `ready` update succeeds** — Phase 2 did not add the enqueue hook itself.
+
+**Phase 3 owns (does not exist yet on main):**
+- `photo_jobs` table (Phase 2 was originally going to create it; reality: Phase 2 shipped a per-row `processing_state` instead). Phase 3 Task 2 creates the table from scratch.
+- `enqueuePhotoJob` helper in `lib/jobs/enqueue.ts`.
 
 **Phase 3 produces (consumed by Phase 4):**
 - `face_detections` rows: `photo_id`, `bbox`, `embedding (vector(128))`, `cluster_id`, `confidence`, `landmarks_json`, `created_at`.
@@ -123,21 +138,37 @@ With one warm pod, hit `/health` plus a stub-detect endpoint (returns canned res
 
 ---
 
-### Task 2: Schema — `photo_jobs` table (confirm migration + add view)
+### Task 2: Schema — `photo_jobs` table + `failed_photo_jobs_recent` view
 
 **Files:**
-- Confirm: `db/schema.ts` and `db/migrations/` already contain the `photo_jobs` table (created in Phase 2 Task 3)
-- Add: `failed_photo_jobs_recent` SQL view via a new migration
+- Modify: `db/schema.ts`
+- Generate: new migration in `db/migrations/`
 
-The `photo_jobs` table is created in Phase 2 Task 3 with the column shape this phase requires (`claimed_at`, `claimed_by`, `max_attempts`, `last_error_at`, and the partial unique index on `photo_id where state in ('queued','claimed','succeeded')`). This task's job is to confirm that migration ran cleanly against your working Neon branch, and to add the `failed_photo_jobs_recent` SQL view.
+**Note (revised 2026-05-01):** an earlier draft of this plan assumed Phase 2 would create `photo_jobs` as part of its upload-pipeline work. Phase 2 shipped a per-row `photos.processing_state` column instead (which tracks upload→preview only) and never added a job queue. Phase 3 owns this table from scratch.
 
-**Step 1: Confirm the migration ran**
+**Step 1: Add the `photoJobs` Drizzle table**
+- `id uuid pk default random`
+- `photo_id uuid not null references photos(id) on delete cascade`
+- `kind text not null default 'detect'` (Phase 6 may add `'preview'` or other kinds)
+- `state text not null check in ('queued','claimed','succeeded','failed')` default `'queued'`
+- `attempts int not null default 0`
+- `max_attempts int not null default 5`
+- `claimed_at timestamp` (nullable)
+- `claimed_by text` (worker instance id; nullable)
+- `last_error text` (nullable)
+- `last_error_at timestamp` (nullable)
+- `succeeded_at timestamp` (nullable)
+- `failed_at timestamp` (nullable)
+- `created_at timestamp not null default now()`
+- `updated_at timestamp not null default now()`
+- partial unique index on `(photo_id, kind) where state in ('queued','claimed','succeeded')` — at most one non-failed job per (photo, kind); resubmissions after failure are allowed.
+
+**Step 2: Generate + apply migration**
 ```bash
-psql "$DATABASE_URL" -c "\d photo_jobs"
+pnpm db:generate && pnpm db:migrate
 ```
-You should see `claimed_at`, `claimed_by`, `max_attempts`, and `last_error_at` columns. If the columns are absent (Phase 2 was on a different branch), apply the Phase 2 migration now before continuing.
 
-**Step 2: Add `failed_photo_jobs_recent` view via raw SQL migration**
+**Step 3: Add `failed_photo_jobs_recent` view via raw SQL migration**
 ```sql
 CREATE OR REPLACE VIEW failed_photo_jobs_recent AS
 SELECT pj.id, pj.photo_id, p.event_id, p.uploader_user_id,
@@ -148,19 +179,14 @@ WHERE pj.state = 'failed' AND pj.failed_at > now() - interval '7 days'
 ORDER BY pj.failed_at DESC;
 ```
 
-**Step 3: Generate + apply**
-```bash
-pnpm db:generate && pnpm db:migrate
-```
-
-**Verification:** `\d photo_jobs` in psql shows the columns and constraints; `SELECT * FROM failed_photo_jobs_recent` returns empty.
+**Verification:** `\d photo_jobs` in psql shows all columns and the partial unique index; `SELECT * FROM failed_photo_jobs_recent` returns empty.
 
 **Failure visibility for this task:** the view itself is the visibility surface; that's the point.
 
 **Step 4: Commit**
 ```bash
 git add db/schema.ts db/migrations
-git commit -m "feat(db): add failed_photo_jobs_recent view (photo_jobs table created in Phase 2)"
+git commit -m "feat(db): add photo_jobs queue table and failed_photo_jobs_recent view"
 ```
 
 ---
@@ -206,29 +232,37 @@ git commit -m "feat(db): add face_detections and face_clusters tables with pgvec
 
 ---
 
-### Task 4: Photo job enqueue helper (TDD)
+### Task 4: Photo job enqueue helper + wire into Phase 2's finalize route (TDD)
 
 **Files:**
 - Create: `lib/jobs/enqueue.ts`, `tests/jobs/enqueue.test.ts`
+- Modify: `app/api/events/[id]/photos/[photoId]/finalize/route.ts` (add enqueue call after `processing_state='ready'` update)
 
-**Step 1: Write failing test**
+**Step 1: Write failing test for `enqueuePhotoJob`**
 - inserts a fake photo row
 - calls `enqueuePhotoJob(photoId)`
-- asserts a `photo_jobs` row exists with `state='queued'`, `attempts=0`
-- calling again is idempotent (returns existing row, does not raise unique violation)
+- asserts a `photo_jobs` row exists with `state='queued'`, `kind='detect'`, `attempts=0`
+- calling again is idempotent (returns existing row, does not raise unique violation against the partial index on `(photo_id, kind) where state in ('queued','claimed','succeeded')`)
 
-**Step 2: Implement `enqueuePhotoJob(photoId, opts?)`**
-- inserts on conflict do nothing on the partial unique index
-- returns the row.
+**Step 2: Implement `enqueuePhotoJob(photoId, opts?)`** in `lib/jobs/enqueue.ts`
+- defaults `kind='detect'`
+- inserts with `onConflictDoNothing` on the partial unique index
+- returns the row (existing or new)
 
 **Step 3: Run, expect green.**
 
-**Failure visibility for this task:** caller logs `{event: 'photo_job.enqueued', photoId, jobId}` at info; idempotent re-enqueues log `event: 'photo_job.enqueue.skipped'` so duplicate uploads aren't silently swallowed.
+**Step 4: Wire into Phase 2's finalize route.** This is the integration point Phase 2 left open.
 
-**Step 4: Commit**
+In `app/api/events/[id]/photos/[photoId]/finalize/route.ts`, immediately after the `db.update(photos).set({ processingState: 'ready', ... })` succeeds, call `await enqueuePhotoJob(photoId)`. Place it inside the same try block so a failure to enqueue surfaces an error to the client (the photo is still `ready`, but the upload UX should know the detection lane didn't start).
+
+If the enqueue throws, log `worker.enqueue.failed` and let the route return 500. Phase 2's e2e test `host upload flow` will need a follow-up assertion: after finalize, a `photo_jobs` row exists with `kind='detect'`, `state='queued'`. Add that assertion in this task.
+
+**Step 5: Failure visibility.** Caller logs `{event: 'photo_job.enqueued', photoId, jobId}` at info; idempotent re-enqueues log `{event: 'photo_job.enqueue.skipped', photoId, jobId}` so duplicate finalize calls aren't silently swallowed.
+
+**Step 6: Commit**
 ```bash
-git add lib/jobs tests/jobs
-git commit -m "feat(jobs): add idempotent photo job enqueue helper"
+git add lib/jobs tests/jobs app/api/events/\[id\]/photos/\[photoId\]/finalize
+git commit -m "feat(jobs): enqueue detect job on photo finalize; idempotent helper"
 ```
 
 ---
@@ -400,7 +434,7 @@ Returns 501 with a body `{"error":"not_implemented","phase":"4"}`. Locks the rou
 
 **Step 1: HTTP client**
 `detectPhoto(photoId, previewKey)` in `lib/worker/client.ts`:
-- mints a 5-minute presigned R2 GET URL via Phase 2's `presignGet`
+- mints a 5-minute presigned R2 GET URL via `createPresignedGetUrl(previewKey, 300)` imported from `@/lib/photos/r2` (Phase 2's R2 helper module)
 - signs body with `WORKER_SECRET` (HMAC SHA-256)
 - POSTs to `${WORKER_URL}/detect` with `X-Worker-Signature`
 - 30s timeout, no internal retries (the queue retries)
@@ -408,11 +442,11 @@ Returns 501 with a body `{"error":"not_implemented","phase":"4"}`. Locks the rou
 **Step 2: Dispatcher**
 `processOneJob(workerId)` in `lib/worker/dispatcher.ts`:
 1. `claimNextJob(workerId, 120)` → null means idle
-2. fetch the photo row + `r2_key_preview`
+2. fetch the photo row + `r2_key_preview`. Defensive check: if `processing_state !== 'ready'` or `r2_key_preview` is null, mark the job failed with `error='photo_not_ready'` and return — this should not happen in practice because the enqueue happens after `ready`, but the dispatcher must be safe against races.
 3. call `detectPhoto`
 4. open a transaction:
    - insert `face_detections` rows
-   - update `photos.has_detected_faces` (true if faces, false otherwise)
+   - update `photos.has_detected_faces` (true if faces, false otherwise) — **never write `photos.processing_state`; that column is owned by Phase 2's upload pipeline**
    - `markSucceeded(jobId)`
 5. on any throw: `markFailed(jobId, err.message)`
 
