@@ -169,6 +169,10 @@ test('markSucceeded: no-op on already-succeeded job, returns null', async () => 
 
 // Test 5 (negative): markFailed on a nonexistent job returns null without crashing
 test('markFailed: nonexistent jobId returns null, does not throw', async () => {
+  const { p } = await seedFixtures()
+  // Canary: an unrelated claimed job that must not be touched
+  const canary = await insertClaimedJob(p.id, { attempts: 1, state: 'claimed' })
+
   const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
   const result = await markFailed('00000000-0000-0000-0000-000000000000', 'stale')
@@ -184,4 +188,57 @@ test('markFailed: nonexistent jobId returns null, does not throw', async () => {
   expect(warnCalls).toHaveLength(1)
 
   warnSpy.mockRestore()
+
+  // Canary must not have been mutated
+  const [canaryAfter] = await db
+    .select()
+    .from(photoJobs)
+    .where((await import('drizzle-orm')).eq(photoJobs.id, canary.id))
+  expect(canaryAfter.state).toBe('claimed')
+  expect(canaryAfter.lastError).toBeNull()
+})
+
+// Test 6 (C2): markFailed on an already-succeeded job is a no-op — late-marker race condition
+test('markFailed: no-op on succeeded job, emits worker.job.late_marker warn, state unchanged', async () => {
+  const { p } = await seedFixtures()
+  // Seed a job already in succeeded state (simulates Worker B already succeeded)
+  const job = await insertClaimedJob(p.id, {
+    state: 'succeeded',
+    attempts: 2,
+    maxAttempts: 5,
+  })
+  // Manually set succeeded_at (insertClaimedJob doesn't set it via the overrides path)
+  await db.execute(
+    (await import('drizzle-orm')).sql`
+      UPDATE photo_jobs SET succeeded_at = now() WHERE id = ${job.id}
+    `,
+  )
+
+  const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+  const result = await markFailed(job.id, 'timeout')
+
+  // Must return null — it's a no-op
+  expect(result).toBeNull()
+
+  // Late-marker warn must fire
+  const lateCalls = warnSpy.mock.calls.filter(
+    (args) =>
+      args[0] &&
+      typeof args[0] === 'object' &&
+      (args[0] as { event?: string }).event === 'worker.job.late_marker',
+  )
+  expect(lateCalls).toHaveLength(1)
+  const lateLog = lateCalls[0][0] as Record<string, unknown>
+  expect(lateLog.jobId).toBe(job.id)
+  expect(lateLog.error).toBe('timeout')
+
+  warnSpy.mockRestore()
+
+  // Row must still be in succeeded state — CASE UPDATE must NOT have fired
+  const [rowAfter] = await db
+    .select()
+    .from(photoJobs)
+    .where((await import('drizzle-orm')).eq(photoJobs.id, job.id))
+  expect(rowAfter.state).toBe('succeeded')
 })

@@ -53,12 +53,18 @@ function mapRow(raw: RawCompleteRow): PhotoJob & { _eventId: string | null } {
 }
 
 /**
- * Marks a job as succeeded.
+ * Mark a claimed job as succeeded.
  *
  * - Sets state='succeeded', succeeded_at=now(), clears claim fields.
- * - If the job is not in 'claimed' state, returns null without modifying the row.
- *   This is intentional: a race where two workers try to succeed the same job
- *   should be a silent no-op for the loser, not a crash or a data corruption.
+ *
+ * @returns The updated row, or null if the job is no longer in 'claimed' state
+ *   (e.g., a watchdog reclaim already happened and another worker now owns it).
+ *
+ * IMPORTANT — Transaction safety: callers running inside a transaction (notably
+ * Task 9's dispatcher inserting face_detections in the same tx) MUST throw on a
+ * null return so the surrounding transaction rolls back. Committing your work
+ * after a null markSucceeded creates duplicate face_detections rows when the
+ * other worker also commits.
  */
 export async function markSucceeded(jobId: string): Promise<PhotoJob | null> {
   const result = (await db.execute(sql`
@@ -89,7 +95,7 @@ export async function markSucceeded(jobId: string): Promise<PhotoJob | null> {
 }
 
 /**
- * Marks a job as failed after a worker error.
+ * Marks a claimed job as failed after a worker error.
  *
  * Uses a single atomic CASE UPDATE (no TOCTOU window):
  * - If attempts < max_attempts: sets state='queued', clears claim fields so
@@ -99,16 +105,41 @@ export async function markSucceeded(jobId: string): Promise<PhotoJob | null> {
  *
  * Does NOT increment attempts — that is the claim helper's responsibility.
  *
- * Emits:
- *   worker.job.retry  (console.log / INFO)  on retry path
- *   worker.job.failed (console.error / ERROR) on dead-letter path
+ * @returns The updated row, or null if the job is not in 'claimed' state or does
+ *   not exist. A null return on a non-existent job fires a `worker.job.notfound`
+ *   warn. A null return because the job is no longer 'claimed' (e.g., a watchdog
+ *   already reclaimed it and another worker succeeded) fires a
+ *   `worker.job.late_marker` warn — the stale late-marker becomes a no-op and the
+ *   succeeded row is left untouched.
  *
- * Returns null if the job does not exist (logs a warn for operator visibility).
+ * The `AND state = 'claimed'` guard prevents the stale-worker race condition where:
+ *   1. Watchdog reclaims job J for Worker B.
+ *   2. Worker B succeeds: state → 'succeeded'.
+ *   3. Worker A's hanging call resolves and calls markFailed.
+ *   Without the guard, the CASE expression would transition the succeeded row back
+ *   to 'queued', causing duplicate processing.
+ *
+ * NOTE — Transaction safety for callers: this function does not itself open a
+ *   transaction. Callers that run inside a transaction (e.g., inserting side-effects
+ *   such as face_detections in the same tx) do NOT need to throw on null here —
+ *   the null only occurs for stale late-markers, which are benign. The relevant
+ *   transaction contract is on markSucceeded (see its JSDoc).
+ *
+ * Emits:
+ *   worker.job.retry      (console.log / INFO)   on retry path
+ *   worker.job.failed     (console.error / ERROR) on dead-letter path
+ *   worker.job.notfound   (console.warn / WARN)   when jobId does not exist
+ *   worker.job.late_marker (console.warn / WARN)  when job is no longer 'claimed'
  */
 export async function markFailed(jobId: string, error: string): Promise<PhotoJob | null> {
   const result = (await db.execute(sql`
     UPDATE photo_jobs
     SET
+      -- All CASE expressions below evaluate against the pre-update row.
+      -- Per Postgres UPDATE semantics: SET-list expressions read the original
+      -- values, so the retry-vs-dead-letter decision (attempts < max_attempts)
+      -- is consistent across all four columns even if a future change adds
+      -- "attempts = attempts + 1" to the same UPDATE.
       state        = CASE WHEN attempts < max_attempts THEN 'queued' ELSE 'failed' END,
       last_error   = ${error},
       last_error_at = now(),
@@ -119,6 +150,7 @@ export async function markFailed(jobId: string, error: string): Promise<PhotoJob
       claimed_by   = CASE WHEN attempts < max_attempts THEN NULL ELSE claimed_by END,
       updated_at   = now()
     WHERE id = ${jobId}
+      AND state = 'claimed'
     RETURNING
       photo_jobs.*,
       (SELECT photos.event_id FROM photos WHERE photos.id = photo_jobs.photo_id) AS event_id_for_log
@@ -127,7 +159,19 @@ export async function markFailed(jobId: string, error: string): Promise<PhotoJob
   const rows = Array.from(result)
 
   if (rows.length === 0) {
-    console.warn({ event: 'worker.job.notfound', jobId, last_error: error })
+    // Distinguish: does the row exist at all, or is it just not in 'claimed' state?
+    const existing = (await db.execute(sql`
+      SELECT id FROM photo_jobs WHERE id = ${jobId}
+    `)) as unknown as { id: string }[]
+    const exists = Array.from(existing).length > 0
+
+    if (!exists) {
+      console.warn({ event: 'worker.job.notfound', jobId, error })
+    } else {
+      // Row exists but not in 'claimed' state — stale late-marker (e.g., watchdog
+      // reclaimed and another worker already succeeded this job).
+      console.warn({ event: 'worker.job.late_marker', jobId, error })
+    }
     return null
   }
 
