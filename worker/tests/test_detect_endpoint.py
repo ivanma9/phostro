@@ -118,7 +118,7 @@ async def test_r2_fetch_failure_502(client, capsys):
     )
     assert resp.status_code == 502
     data = resp.json()
-    assert data["detail"]["error"] == "r2_fetch_failed"
+    assert data["error"] == "worker.detect.r2_fetch_failed"
 
     # Verify structured log was emitted
     captured = capsys.readouterr()
@@ -159,7 +159,7 @@ async def test_image_decode_failure_400(app_with_mock_models, capsys):
 
     assert resp.status_code == 400
     data = resp.json()
-    assert data["detail"]["error"] == "worker.detect.decode_failed"
+    assert data["error"] == "worker.detect.decode_failed"
 
     captured = capsys.readouterr()
     assert "worker.detect.decode_failed" in captured.err
@@ -207,7 +207,7 @@ async def test_detector_inference_failure_500(app_with_mock_models, capsys):
 
     assert resp.status_code == 500
     data = resp.json()
-    assert data["detail"]["error"] == "worker.detect.inference_failed"
+    assert data["error"] == "worker.detect.inference_failed"
 
     captured = capsys.readouterr()
     assert "worker.detect.inference_failed" in captured.err

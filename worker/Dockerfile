@@ -20,6 +20,7 @@ WORKDIR /app
 # Copy application code (recognition package, config, entrypoint)
 COPY worker/__init__.py ./worker/__init__.py
 COPY worker/main.py ./worker/main.py
+COPY worker/api/ ./worker/api/
 COPY worker/recognition/ ./worker/recognition/
 COPY worker/config/ ./worker/config/
 

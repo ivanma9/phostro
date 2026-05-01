@@ -23,7 +23,7 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 
@@ -51,11 +51,22 @@ def _emit_structured(event: str, **kwargs) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Validate WORKER_SECRET before anything else — fail fast if misconfigured.
+    _secret = os.environ.get("WORKER_SECRET", "")
+    if not _secret or not _secret.strip():
+        _emit_structured("worker.startup.missing_secret")
+        raise RuntimeError(
+            "WORKER_SECRET env var is not set or empty. "
+            "Set it to a strong random secret before starting the worker."
+        )
+
     models_dir = Path(os.environ.get("WORKER_MODELS_DIR", "/models"))
 
     from worker.recognition.detect import load_detector, MODEL_FILENAME as DET_FILE
     from worker.recognition.embed import load_embedder, MODEL_FILENAME as EMB_FILE
 
+    # TODO: lifespan currently uncovered by tests — pytest ASGITransport bypasses it.
+    # Task 15 CI will exercise via docker run smoke.
     try:
         app.state.detector = load_detector(models_dir)
         app.state.embedder = load_embedder(models_dir)
@@ -74,6 +85,9 @@ async def lifespan(app: FastAPI):
     }
 
     app.state.worker_concurrency = os.environ.get("WORKER_CONCURRENCY", "auto")
+    # TODO: GIT_COMMIT_SHA env var is set by CI build (Task 15) — defaults to
+    # "unknown" locally. Don't fail startup on this; smoke test verifies it's a
+    # real SHA in CI.
     app.state.commit_sha = os.environ.get("GIT_COMMIT_SHA", "unknown")
 
     yield
@@ -88,6 +102,23 @@ app = FastAPI(lifespan=lifespan)
 
 from worker.api.detect import router as detect_router  # noqa: E402
 app.include_router(detect_router)
+
+
+# ---------------------------------------------------------------------------
+# Custom exception handler — normalise all HTTPException bodies to top-level
+# {"error": "...", ...} shape so Task 9 dispatcher sees a consistent contract.
+# ---------------------------------------------------------------------------
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    if isinstance(exc.detail, dict):
+        body = exc.detail
+    elif isinstance(exc.detail, str):
+        body = {"error": exc.detail}
+    else:
+        body = {"error": "worker.unknown_error"}
+    return JSONResponse(status_code=exc.status_code, content=body)
 
 
 @app.get("/health")

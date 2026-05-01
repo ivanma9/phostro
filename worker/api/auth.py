@@ -32,11 +32,17 @@ def verify_signature(request: Request, body: bytes) -> None:
     """
     header = request.headers.get("X-Worker-Signature", "")
     if not header.startswith("sha256="):
-        raise HTTPException(status_code=401, detail="invalid_signature")
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "worker.auth.invalid_signature"},
+        )
 
     provided_hex = header[len("sha256="):]
 
     expected_hex = hmac.new(_get_secret(), body, hashlib.sha256).hexdigest()
 
     if not hmac.compare_digest(expected_hex, provided_hex):
-        raise HTTPException(status_code=401, detail="invalid_signature")
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "worker.auth.invalid_signature"},
+        )

@@ -23,7 +23,7 @@ async def fetch_image(url: str, client: httpx.AsyncClient) -> bytes:
         _emit_structured("worker.detect.r2_fetch_failed", url=url, error=str(exc))
         raise HTTPException(
             status_code=502,
-            detail={"error": "r2_fetch_failed", "status": 0},
+            detail={"error": "worker.detect.r2_fetch_failed", "upstream_status": None},
         ) from exc
 
     if resp.status_code < 200 or resp.status_code >= 300:
@@ -32,7 +32,10 @@ async def fetch_image(url: str, client: httpx.AsyncClient) -> bytes:
         )
         raise HTTPException(
             status_code=502,
-            detail={"error": "r2_fetch_failed", "status": resp.status_code},
+            detail={
+                "error": "worker.detect.r2_fetch_failed",
+                "upstream_status": resp.status_code,
+            },
         )
 
     return resp.content

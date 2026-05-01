@@ -25,7 +25,7 @@ import cv2
 import httpx
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 from .auth import verify_signature
 from .r2 import fetch_image
@@ -50,7 +50,17 @@ class FaceOut(BaseModel):
     bbox_y2: float
     confidence: float
     landmarks: list[list[float]]  # [[x, y], ...] × 5
-    embedding: list[float]  # length 128
+    embedding: list[float] = Field(min_length=128, max_length=128)
+
+    @field_validator("landmarks")
+    @classmethod
+    def validate_landmarks_shape(cls, v: list[list[float]]) -> list[list[float]]:
+        if len(v) != 5 or not all(len(p) == 2 for p in v):
+            raise ValueError(
+                f"landmarks must be shape (5, 2); got {len(v)} points"
+                + (f" with shapes {[len(p) for p in v]}" if v else "")
+            )
+        return v
 
 
 class DetectResponse(BaseModel):
@@ -98,7 +108,10 @@ async def detect(
         payload = json.loads(body)
         req = DetectRequest(**payload)
     except Exception as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "worker.detect.invalid_request"},
+        ) from exc
 
     t0 = time.perf_counter()
 
@@ -120,6 +133,8 @@ async def detect(
     embedder = request.app.state.embedder
 
     loop = asyncio.get_running_loop()
+    # TODO: executor pool saturation — defer to Phase 3 follow-up after Task 1
+    # saturation re-run with real inference. Consider a bounded ThreadPoolExecutor.
     try:
         faces_raw, _detect_elapsed = await loop.run_in_executor(
             None, detector.detect, image_bgr
