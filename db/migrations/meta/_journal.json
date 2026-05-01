@@ -29,6 +29,13 @@
       "when": 1777326085140,
       "tag": "0003_cheerful_talkback",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1777604133404,
+      "tag": "0004_common_pyro",
+      "breakpoints": true
     }
   ]
 }

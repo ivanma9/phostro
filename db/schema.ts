@@ -75,3 +75,50 @@ export const eventMembers = pgTable(
   },
   (t) => [primaryKey({ columns: [t.eventId, t.userId] })],
 )
+
+export const photos = pgTable(
+  'photos',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    uploaderUserId: uuid('uploader_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+
+    processingState: text('processing_state', {
+      enum: ['pending', 'processing', 'ready', 'failed'],
+    })
+      .notNull()
+      .default('pending'),
+
+    pendingExpiresAt: timestamp('pending_expires_at'),
+    processingClaimedAt: timestamp('processing_claimed_at'),
+
+    pendingKey: text('pending_key'),
+    r2KeyOriginal: text('r2_key_original'),
+    r2KeyPreview: text('r2_key_preview'),
+
+    declaredMimeType: text('declared_mime_type').notNull(),
+    declaredSizeBytes: integer('declared_size_bytes').notNull(),
+    originalFilename: text('original_filename'),
+
+    width: integer('width'),
+    height: integer('height'),
+    sizeBytesOriginal: integer('size_bytes_original'),
+    takenAt: timestamp('taken_at'),
+    uploadedAt: timestamp('uploaded_at'),
+
+    hasDetectedFaces: boolean('has_detected_faces'),
+
+    deletedAt: timestamp('deleted_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('photos_event_id_idx').on(t.eventId),
+    index('photos_event_taken_at_idx').on(t.eventId, t.takenAt.desc()),
+    index('photos_event_state_idx').on(t.eventId, t.processingState),
+    index('photos_uploader_event_idx').on(t.uploaderUserId, t.eventId),
+  ],
+)
