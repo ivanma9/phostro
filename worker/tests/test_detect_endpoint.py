@@ -263,7 +263,7 @@ async def test_detect_inference_path(app_env, capsys):
 
     assert resp.status_code == 200
     data = resp.json()
-    assert len(data["faces"]) >= 1
+    assert len(data["faces"]) >= 2  # spec line 427: >=2 faces in group_03.jpg
     assert len(data["faces"][0]["embedding"]) == 128
 
 
