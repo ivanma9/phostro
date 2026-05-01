@@ -37,6 +37,8 @@ export default defineConfig({
       R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID ?? '',
       R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY ?? '',
       R2_BUCKET: process.env.R2_BUCKET ?? '',
+      // next dev unconditionally overrides NODE_ENV to 'development', so E2E=1
+      // is the actual gate for the test-only sign-in route.
       NODE_ENV: 'test',
       E2E: '1',
     },

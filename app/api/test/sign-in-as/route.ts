@@ -7,8 +7,10 @@ import { getSession } from '@/lib/auth/session'
 export const runtime = 'nodejs'
 
 export async function POST(req: Request) {
-  // NODE_ENV is forced to 'development' by `next dev`, so also accept E2E=1
-  if (process.env.NODE_ENV !== 'test' && process.env.E2E !== '1') {
+  // NODE_ENV is forced to 'development' by `next dev`, so also accept E2E=1.
+  // Belt-and-suspenders: always block in production regardless of E2E flag.
+  const allowed = process.env.NODE_ENV === 'test' || process.env.E2E === '1'
+  if (!allowed || process.env.NODE_ENV === 'production') {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }
   const { contact, name } = (await req.json()) as { contact?: string; name?: string }
