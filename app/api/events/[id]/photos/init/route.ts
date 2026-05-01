@@ -66,7 +66,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       // Lock the parent event row to serialize cap checks.
       await tx.execute(sql`SELECT 1 FROM events WHERE id = ${eventId} FOR UPDATE`)
 
-      const count = await countActivePhotos(eventId)
+      const count = await countActivePhotos(eventId, tx)
       if (count >= MAX_PHOTOS_PER_EVENT) {
         throw Object.assign(new Error('event cap reached'), { status: 429 })
       }
