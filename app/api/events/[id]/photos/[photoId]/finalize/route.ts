@@ -1,4 +1,4 @@
-import { and, eq, lt, or } from 'drizzle-orm'
+import { and, eq, inArray, lt, or } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
 import { db } from '@/db'
 import { photos } from '@/db/schema'
@@ -20,7 +20,7 @@ async function markFailed(photoId: string, alsoDeleteKey?: string | null): Promi
       processingState: 'failed',
       processingClaimedAt: null,
     })
-    .where(eq(photos.id, photoId))
+    .where(and(eq(photos.id, photoId), inArray(photos.processingState, ['pending', 'processing'])))
   if (alsoDeleteKey) {
     try {
       await deleteObject(alsoDeleteKey)
