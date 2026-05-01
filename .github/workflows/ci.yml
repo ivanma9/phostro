@@ -30,6 +30,10 @@ jobs:
       SESSION_SECRET: ci_session_secret_at_least_32_characters_long_!!
       APP_URL: http://localhost:3000
       # RESEND_API_KEY left unset so /api/auth/request skips sending email in e2e
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
 
     steps:
       - uses: actions/checkout@v4
