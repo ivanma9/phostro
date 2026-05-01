@@ -77,7 +77,11 @@ Image: `phostro-worker:loaded` (warm, single pod). Concurrency levels: 1, 2, 4, 
 
 **Step 4 (Fly.io trial + Railway trial) is DEFERRED — needs user account setup; planned follow-up.**
 
-The "Scale-from-zero wake" and "Host" columns are left blank until cloud measurements are taken. The "Decision" column (which cloud host to use) is also TBD pending those results.
+The "Scale-from-zero wake" and "Host" columns are left blank until cloud measurements are taken.
+
+## Phase 1 worker-hosting decision
+
+**Decision: explicitly carried forward, not closed in this doc.** We are not picking Fly.io vs. Railway yet because the local baseline alone cannot answer the question — the hosting choice hinges on scale-from-zero wake latency, which is a property of the host, not the image. Local cold-start budgets are healthy (p95 ≤ 1.32s with models loaded), so the constraint will come from the cloud side. Final pick will be made in a follow-up commit on this doc once Step 4 measurements are taken on both providers under the same script.
 
 ---
 
@@ -85,9 +89,9 @@ The "Scale-from-zero wake" and "Host" columns are left blank until cloud measure
 
 | Host | Cold start (no models) | Cold start (models loaded) | Scale-from-zero wake | Knee concurrency | Decision |
 |---|---|---|---|---|---|
-| Local (Apple M3 Pro) | p50=0.79s / p95=0.97s | p50=1.03s / p95=1.32s | N/A | No knee ≤ c=8 (async sleep only; re-test with real inference in Task 7) | N/A (local baseline) |
-| Fly.io | — | — | DEFERRED | DEFERRED | TBD |
-| Railway | — | — | DEFERRED | DEFERRED | TBD |
+| Local (Apple M3 Pro) | p50=0.79s / p95=0.97s | p50=1.03s / p95=1.32s | N/A | No knee ≤ c=8 (async sleep only; re-test with real inference in Task 7) | N/A — baseline only; not a deploy candidate |
+| Fly.io | — | — | DEFERRED | DEFERRED | Carried forward; pick after Step 4 |
+| Railway | — | — | DEFERRED | DEFERRED | Carried forward; pick after Step 4 |
 
 ---
 
