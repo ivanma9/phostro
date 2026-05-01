@@ -122,3 +122,35 @@ export const photos = pgTable(
     index('photos_uploader_event_idx').on(t.uploaderUserId, t.eventId),
   ],
 )
+
+export const photoJobs = pgTable(
+  'photo_jobs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    photoId: uuid('photo_id')
+      .notNull()
+      .references(() => photos.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull().default('detect'),
+    state: text('state', {
+      enum: ['queued', 'claimed', 'succeeded', 'failed'],
+    })
+      .notNull()
+      .default('queued'),
+    attempts: integer('attempts').notNull().default(0),
+    maxAttempts: integer('max_attempts').notNull().default(5),
+    claimedAt: timestamp('claimed_at'),
+    claimedBy: text('claimed_by'),
+    lastError: text('last_error'),
+    lastErrorAt: timestamp('last_error_at'),
+    succeededAt: timestamp('succeeded_at'),
+    failedAt: timestamp('failed_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('photo_jobs_photo_id_idx').on(t.photoId),
+    index('photo_jobs_state_idx').on(t.state),
+    // Partial unique index added as raw SQL in migration:
+    // UNIQUE (photo_id, kind) WHERE state IN ('queued','claimed','succeeded')
+  ],
+)
