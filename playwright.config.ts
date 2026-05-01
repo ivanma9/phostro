@@ -31,8 +31,11 @@ export default defineConfig({
         return url
       })(),
       SESSION_SECRET:
-        process.env.SESSION_SECRET ?? 'test_session_secret_at_least_32_characters_long_!!',
+        process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 32
+          ? process.env.SESSION_SECRET
+          : 'test_session_secret_at_least_32_characters_long_!!',
       APP_URL: baseURL,
+      RESEND_API_KEY: '',
     },
   },
 })

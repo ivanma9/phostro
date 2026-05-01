@@ -54,3 +54,34 @@ test('already_member when joining twice', async () => {
   await joinEvent(event.id, attendee.id)
   expect(await joinEvent(event.id, attendee.id)).toBe('already_member')
 })
+
+test('host rejoining keeps the existing host membership', async () => {
+  const { host, event } = await seed()
+  await db.insert(eventMembers).values({ eventId: event.id, userId: host.id, role: 'host' })
+
+  expect(await joinEvent(event.id, host.id)).toBe('already_member')
+
+  const [membership] = await db
+    .select()
+    .from(eventMembers)
+    .where(and(eq(eventMembers.eventId, event.id), eq(eventMembers.userId, host.id)))
+  expect(membership.role).toBe('host')
+})
+
+test('concurrent joins stay idempotent', async () => {
+  const { attendee, event } = await seed()
+
+  const results = await Promise.all([
+    joinEvent(event.id, attendee.id),
+    joinEvent(event.id, attendee.id),
+  ])
+
+  expect(results.sort()).toEqual(['already_member', 'joined'])
+
+  const memberships = await db
+    .select()
+    .from(eventMembers)
+    .where(and(eq(eventMembers.eventId, event.id), eq(eventMembers.userId, attendee.id)))
+  expect(memberships).toHaveLength(1)
+  expect(memberships[0].role).toBe('attendee')
+})

@@ -73,3 +73,19 @@ test('rejects invalid name and lifespan', async () => {
   )
   expect(r2.status).toBe(400)
 })
+
+test('accepts explicit lifespan and visibility mode', async () => {
+  await asUser()
+  const res = await POST(
+    new Request('http://t/api/events', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Retreat', lifespanDays: 14, visibilityMode: 'host_only' }),
+      headers: { 'content-type': 'application/json' },
+    }),
+  )
+
+  expect(res.status).toBe(200)
+  const body = await res.json()
+  expect(body.event.lifespanDays).toBe(14)
+  expect(body.event.visibilityMode).toBe('host_only')
+})
