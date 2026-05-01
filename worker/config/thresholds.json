@@ -1,0 +1,6 @@
+{
+  "match_max_distance": 0.582,
+  "maybe_max_distance": 0.6849,
+  "_note": "PLACEHOLDER from synthetic-fixtures bench (45% hit rate). Replaced by labeled eval in Task 11.",
+  "_source_report": "bench/reports/20260427T083650Z/report.md"
+}

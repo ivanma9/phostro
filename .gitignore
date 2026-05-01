@@ -54,3 +54,10 @@ next-env.d.ts
 
 # generated test fixtures
 tests/fixtures/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.pytest_cache/
