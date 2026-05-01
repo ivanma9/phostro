@@ -81,3 +81,46 @@ test('returns empty list for non-uploader', async () => {
   })
   expect(await listMyPhotos(e.id, other.id)).toEqual([])
 })
+
+test('orders by takenAt desc nulls last, then createdAt desc', async () => {
+  const { u, e } = await seed()
+  // Insert in a deliberate order; expected output order is:
+  // 1. dated newer first (2026-04-15)
+  // 2. dated older second (2026-04-10)
+  // 3. undated last (NULL takenAt)
+  await db.insert(photos).values([
+    {
+      eventId: e.id,
+      uploaderUserId: u.id,
+      processingState: 'ready',
+      r2KeyPreview: 'preview/undated',
+      takenAt: null,
+      declaredMimeType: 'image/jpeg',
+      declaredSizeBytes: 1,
+    },
+    {
+      eventId: e.id,
+      uploaderUserId: u.id,
+      processingState: 'ready',
+      r2KeyPreview: 'preview/older',
+      takenAt: new Date('2026-04-10T12:00:00Z'),
+      declaredMimeType: 'image/jpeg',
+      declaredSizeBytes: 1,
+    },
+    {
+      eventId: e.id,
+      uploaderUserId: u.id,
+      processingState: 'ready',
+      r2KeyPreview: 'preview/newer',
+      takenAt: new Date('2026-04-15T12:00:00Z'),
+      declaredMimeType: 'image/jpeg',
+      declaredSizeBytes: 1,
+    },
+  ])
+  const out = await listMyPhotos(e.id, u.id)
+  expect(out.map((p) => p.previewUrl)).toEqual([
+    'https://fake/preview/newer?sig=x',
+    'https://fake/preview/older?sig=x',
+    'https://fake/preview/undated?sig=x',
+  ])
+})

@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import { photos } from '@/db/schema'
 import { createPresignedGetUrl } from './r2'
@@ -26,7 +26,7 @@ export async function listMyPhotos(eventId: string, userId: string): Promise<Gal
         isNull(photos.deletedAt),
       ),
     )
-    .orderBy(desc(photos.takenAt), desc(photos.createdAt))
+    .orderBy(sql`${photos.takenAt} desc nulls last, ${photos.createdAt} desc`)
 
   return Promise.all(
     rows.map(async (row) => ({
