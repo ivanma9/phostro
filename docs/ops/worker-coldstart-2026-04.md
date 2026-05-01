@@ -42,7 +42,7 @@ Both images start well within 2s on Apple M3 Pro. The loaded image overhead is d
 
 ### Notes on failures
 
-Zero failed runs. All 10 runs (5 stub + 5 loaded) returned 200 within the 30s timeout.
+Zero failed runs. All 10 runs (5 stub + 5 loaded) returned 200 well under the 30s polling budget (300 polls × 100ms; container killed and run marked FAILED on timeout). First run of each image typically pays an extra ~0.2–0.3s of disk-cache warmup; runs 2–5 reflect steady-state cold-start.
 
 Log files for each run: see `/tmp/worker-coldstart/20260501T012025/` (stub) and `/tmp/worker-coldstart/20260501T012126/` (loaded).
 
@@ -56,12 +56,14 @@ Image: `phostro-worker:loaded` (warm, single pod). Concurrency levels: 1, 2, 4, 
 
 ### Results
 
-| Concurrency | p50 (ms) | p95 (ms) | RPS (approx) | Notes |
+| Concurrency | p50 (ms) | p95 (ms) | RPS (upper bound¹) | Notes |
 |---|---|---|---|---|
 | 1 | 228 | 243 | 82 | ~200ms per request, no queuing |
 | 2 | 230 | 248 | 161 | linear scaling — async I/O |
 | 4 | 234 | 261 | 300 | still linear |
 | 8 | 239 | 261 | 584 | still linear |
+
+¹ RPS column is computed as `requests / max_single_request_latency`, an *upper bound*, not measured throughput. The harness fires concurrent batches without total-wall-time tracking. Treat RPS as directional only; p50/p95 are the load-bearing numbers.
 
 ### Interpretation
 
