@@ -1,14 +1,18 @@
 import {
   boolean,
+  check,
   customType,
   index,
   integer,
   pgTable,
+  pgView,
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
+import { and, desc, eq, gt, sql } from 'drizzle-orm'
 
 const vector = (name: string, dim: number) =>
   customType<{ data: number[]; driverData: string }>({
@@ -131,6 +135,7 @@ export const photoJobs = pgTable(
       .notNull()
       .references(() => photos.id, { onDelete: 'cascade' }),
     kind: text('kind').notNull().default('detect'),
+    // TS literal union must stay in sync with CHECK constraint below.
     state: text('state', {
       enum: ['queued', 'claimed', 'succeeded', 'failed'],
     })
@@ -145,12 +150,49 @@ export const photoJobs = pgTable(
     succeededAt: timestamp('succeeded_at'),
     failedAt: timestamp('failed_at'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
+    // NOTE: callers MUST set updatedAt = new Date() on every state-mutating UPDATE.
+    // No trigger; helpers in lib/jobs/ (Tasks 5–6) own this discipline.
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
   (t) => [
     index('photo_jobs_photo_id_idx').on(t.photoId),
-    index('photo_jobs_state_idx').on(t.state),
-    // Partial unique index added as raw SQL in migration:
-    // UNIQUE (photo_id, kind) WHERE state IN ('queued','claimed','succeeded')
+    // Composite index supports Task 5 SKIP-LOCKED claim query:
+    // SELECT ... WHERE state = 'queued' ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED
+    index('photo_jobs_state_created_idx').on(t.state, t.createdAt),
+    uniqueIndex('photo_jobs_photo_id_kind_active_uidx')
+      .on(t.photoId, t.kind)
+      .where(sql`state IN ('queued','claimed','succeeded')`),
+    check(
+      'photo_jobs_state_check',
+      sql`state IN ('queued','claimed','succeeded','failed')`,
+    ),
   ],
+)
+
+// VIEW CONTRACT: failed_photo_jobs_recent (id, photo_id, event_id, uploader_user_id,
+// attempts, last_error, last_error_at, failed_at). Operator runbook (Task 17) and
+// failure-visibility checks depend on this column set. Renaming or removing
+// columns from photo_jobs/photos requires updating this view in the same migration.
+export const failedPhotoJobsRecent = pgView('failed_photo_jobs_recent').as(
+  (qb) =>
+    qb
+      .select({
+        id: photoJobs.id,
+        photoId: photoJobs.photoId,
+        eventId: photos.eventId,
+        uploaderUserId: photos.uploaderUserId,
+        attempts: photoJobs.attempts,
+        lastError: photoJobs.lastError,
+        lastErrorAt: photoJobs.lastErrorAt,
+        failedAt: photoJobs.failedAt,
+      })
+      .from(photoJobs)
+      .innerJoin(photos, eq(photos.id, photoJobs.photoId))
+      .where(
+        and(
+          eq(photoJobs.state, 'failed'),
+          gt(photoJobs.failedAt, sql`now() - interval '7 days'`),
+        ),
+      )
+      .orderBy(desc(photoJobs.failedAt)),
 )

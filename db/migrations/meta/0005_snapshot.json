@@ -1,5 +1,5 @@
 {
-  "id": "263f9950-7ab0-408d-817b-e5bb84fa9221",
+  "id": "24816fb3-27ae-4af7-85e1-47d674b1a92b",
   "prevId": "1184004a-2237-4a7a-8f8b-a1b77f89b217",
   "version": "7",
   "dialect": "postgresql",
@@ -354,17 +354,45 @@
           "method": "btree",
           "with": {}
         },
-        "photo_jobs_state_idx": {
-          "name": "photo_jobs_state_idx",
+        "photo_jobs_state_created_idx": {
+          "name": "photo_jobs_state_created_idx",
           "columns": [
             {
               "expression": "state",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "photo_jobs_photo_id_kind_active_uidx": {
+          "name": "photo_jobs_photo_id_kind_active_uidx",
+          "columns": [
+            {
+              "expression": "photo_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "state IN ('queued','claimed','succeeded')",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -388,7 +416,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "photo_jobs_state_check": {
+          "name": "photo_jobs_state_check",
+          "value": "state IN ('queued','claimed','succeeded','failed')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.photos": {
@@ -710,7 +743,67 @@
   "sequences": {},
   "roles": {},
   "policies": {},
-  "views": {},
+  "views": {
+    "public.failed_photo_jobs_recent": {
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "photo_id": {
+          "name": "photo_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_id": {
+          "name": "event_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "uploader_user_id": {
+          "name": "uploader_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_error_at": {
+          "name": "last_error_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failed_at": {
+          "name": "failed_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "definition": "select \"photo_jobs\".\"id\", \"photo_jobs\".\"photo_id\", \"photos\".\"event_id\", \"photos\".\"uploader_user_id\", \"photo_jobs\".\"attempts\", \"photo_jobs\".\"last_error\", \"photo_jobs\".\"last_error_at\", \"photo_jobs\".\"failed_at\" from \"photo_jobs\" inner join \"photos\" on \"photos\".\"id\" = \"photo_jobs\".\"photo_id\" where (\"photo_jobs\".\"state\" = 'failed' and \"photo_jobs\".\"failed_at\" > now() - interval '7 days') order by \"photo_jobs\".\"failed_at\" desc",
+      "name": "failed_photo_jobs_recent",
+      "schema": "public",
+      "isExisting": false,
+      "materialized": false
+    }
+  },
   "_meta": {
     "columns": {},
     "schemas": {},
