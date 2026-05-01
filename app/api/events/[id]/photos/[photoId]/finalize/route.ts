@@ -78,11 +78,6 @@ export async function POST(
   if (claimed.length === 0) {
     const [now] = await db.select().from(photos).where(eq(photos.id, row.id))
     if (now.processingState === 'ready') {
-      // Idempotent re-enqueue: safe because enqueuePhotoJob uses onConflictDoNothing.
-      // Handles the edge case where the first finalize wrote 'ready' but failed at enqueue.
-      await enqueuePhotoJob(now.id).catch((err) =>
-        console.error({ event: 'worker.enqueue.failed', photoId: now.id, error: String(err) }),
-      )
       return NextResponse.json({ photo: now })
     }
     if (now.processingState === 'failed') {

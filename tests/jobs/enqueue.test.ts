@@ -67,6 +67,21 @@ test('enqueuePhotoJob: idempotent — calling twice returns existing row, no uni
   expect(rows).toHaveLength(1)
 })
 
+test('enqueuePhotoJob: concurrent calls both resolve to same id with exactly one row', async () => {
+  const { p } = await seedFixtures()
+  const [job1, job2] = await Promise.all([enqueuePhotoJob(p.id), enqueuePhotoJob(p.id)])
+
+  // Both calls must resolve
+  expect(job1).toBeDefined()
+  expect(job2).toBeDefined()
+  // Both return the same logical row
+  expect(job1.id).toBe(job2.id)
+
+  // Exactly one row in DB
+  const rows = await db.select().from(photoJobs).where(eq(photoJobs.photoId, p.id))
+  expect(rows).toHaveLength(1)
+})
+
 test('enqueuePhotoJob: failed state allows new queued row (partial index does not block)', async () => {
   const { p } = await seedFixtures()
 

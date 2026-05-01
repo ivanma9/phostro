@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 import { db } from '@/db'
 import { photoJobs } from '@/db/schema'
 
@@ -10,35 +10,30 @@ export async function enqueuePhotoJob(
 ): Promise<PhotoJob> {
   const kind = opts?.kind ?? 'detect'
 
-  // The partial unique index is on (photo_id, kind) WHERE state IN ('queued','claimed','succeeded').
-  // PostgreSQL requires the conflict clause WHERE to match the index predicate exactly.
-  const inserted = await db
+  // Use onConflictDoUpdate with a no-op SET so RETURNING always yields one row —
+  // either the freshly inserted row or the existing active row. This eliminates
+  // the TOCTOU window present in a separate INSERT + SELECT approach (the
+  // INSERT-then-SELECT pattern could produce TypeError if the active row
+  // transitioned to 'failed' between the two statements).
+  //
+  // The no-op touches only `kind` with its own value; all other columns (state,
+  // attempts, etc.) remain unchanged.
+  //
+  // MUST match db/schema.ts photoJobs partial unique index predicate:
+  // WHERE state IN ('queued','claimed','succeeded')
+  const [job] = await db
     .insert(photoJobs)
     .values({ photoId, kind })
-    .onConflictDoNothing({
+    .onConflictDoUpdate({
       target: [photoJobs.photoId, photoJobs.kind],
-      where: sql`state IN ('queued','claimed','succeeded')`,
+      targetWhere: sql`state IN ('queued','claimed','succeeded')`,
+      set: { kind: sql`excluded.kind` },
     })
     .returning()
 
-  if (inserted.length > 0) {
-    const job = inserted[0]
-    console.log({ event: 'photo_job.enqueued', photoId, jobId: job.id })
-    return job
-  }
+  // Log a single neutral event; callers can infer idempotency by observing
+  // repeated jobId values across calls.
+  console.log({ event: 'photo_job.enqueue', photoId, jobId: job.id, state: job.state })
 
-  // Conflict: an active row (queued/claimed/succeeded) already exists — fetch it.
-  const [existing] = await db
-    .select()
-    .from(photoJobs)
-    .where(
-      and(
-        eq(photoJobs.photoId, photoId),
-        eq(photoJobs.kind, kind),
-        inArray(photoJobs.state, ['queued', 'claimed', 'succeeded']),
-      ),
-    )
-
-  console.log({ event: 'photo_job.enqueue.skipped', photoId, jobId: existing.id })
-  return existing
+  return job
 }
