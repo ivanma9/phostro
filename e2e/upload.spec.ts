@@ -4,10 +4,10 @@ import { expect, test } from '@playwright/test'
 test('host signs in, creates event, uploads photos, sees thumbnails', async ({ page }) => {
   // Sign in via test-only route — page.request shares the browser context's cookie jar
   await page.goto('/auth/signin')
-  const res = await page.request.post('/api/test/sign-in-as', {
+  const res = await page.request.post('/api/test-login', {
     data: { contact: 'host+e2e@example.com', name: 'E2E Host' },
   })
-  if (!res.ok()) throw new Error(`sign-in-as failed: ${res.status()} ${await res.text()}`)
+  if (!res.ok()) throw new Error(`test-login failed: ${res.status()} ${await res.text()}`)
 
   // Create event
   await page.goto('/events/new')
