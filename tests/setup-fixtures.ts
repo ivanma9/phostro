@@ -16,11 +16,12 @@ async function gen() {
     .toBuffer()
   writeFileSync(join(DIR, 'plain.jpg'), plain)
 
-  // 2. JPEG with EXIF orientation = 6 (rotated 90° CW)
+  // 2. JPEG with EXIF orientation = 6 (rotated 90° CW). withMetadata({orientation})
+  // is the only sharp API that actually embeds the orientation tag in libvips 8.17.
   const rotated = await sharp({
     create: { width: 800, height: 600, channels: 3, background: { r: 200, g: 50, b: 100 } },
   })
-    .withExif({ IFD0: { Orientation: '6' } })
+    .withMetadata({ orientation: 6 })
     .jpeg({ quality: 90 })
     .toBuffer()
   writeFileSync(join(DIR, 'rotated-orientation-6.jpg'), rotated)
