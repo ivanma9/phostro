@@ -43,6 +43,13 @@
       "when": 1777635679814,
       "tag": "0005_real_smiling_tiger",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1777653849910,
+      "tag": "0006_first_joshua_kane",
+      "breakpoints": true
     }
   ]
 }
