@@ -9,6 +9,7 @@ export default defineConfig({
     globals: true,
     include: ['tests/**/*.test.ts'],
     setupFiles: ['tests/setup.ts'],
+    globalSetup: ['tests/setup-fixtures.ts'],
     fileParallelism: false,
     sequence: { hooks: 'list' },
   },
