@@ -12,6 +12,11 @@ Copied verbatim from bench/src/align.py — no changes needed; alignment
 is hardware-agnostic (pure CPU numpy/skimage/opencv).
 """
 
+# WARNING: Kept in sync with bench/src/. Worker output must be byte-identical
+# to bench eval. test_bench_worker_parity.py guards drift.
+# When fixing a bug here: also update bench/src/align.py and rerun the
+# parity test.
+
 from __future__ import annotations
 
 import cv2

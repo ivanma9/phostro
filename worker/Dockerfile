@@ -3,7 +3,7 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /install
 
-COPY requirements.txt .
+COPY worker/requirements.txt .
 
 # Install to an isolated prefix so we can COPY only site-packages into the final image
 RUN pip install --no-cache-dir --prefix=/install/deps -r requirements.txt

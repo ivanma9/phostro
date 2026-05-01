@@ -104,6 +104,8 @@ The "Scale-from-zero wake" and "Host" columns are left blank until cloud measure
 | `phostro-worker:stub` | ~200 MB compressed (python:3.11-slim + fastapi + uvicorn) |
 | `phostro-worker:loaded` | ~450 MB compressed (adds onnxruntime 1.25.1 + numpy) |
 
+**Note (post-Task 7):** Worker now pins onnxruntime==1.17.3 (`worker/requirements.txt`); the table above used 1.25.1 due to >= range pickup. Cold-start delta between versions is expected to be <100ms; revisit if Task 1 is re-run.
+
 Build times (Apple M3 Pro, from cache-warm base layer):
 - stub: ~14s
 - loaded: ~24s (extra pip install for onnxruntime)

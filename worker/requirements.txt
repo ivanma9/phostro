@@ -1,6 +1,6 @@
 fastapi>=0.111
 uvicorn[standard]>=0.29
-onnxruntime==1.17.3
+onnxruntime==1.17.3  # pinned: ABI/provider list shape; rerun bench parity after any bump
 numpy>=1.26,<2
 opencv-python-headless>=4.9
 scikit-image>=0.22

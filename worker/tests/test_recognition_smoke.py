@@ -3,7 +3,7 @@ Smoke tests for worker.recognition package.
 
 Fixture strategy (option 1): bench/fixtures/group_shot/ does not exist on this
 branch. The face-count + embedding-shape assertion is skipped until a public-domain
-group photo is committed under worker/tests/fixtures/ (see inline comment).
+group photo is committed under worker/tests/data/ (see inline comment).
 
 What DOES run:
   - test_modules_importable — verifies all four modules import without error, which
@@ -47,9 +47,9 @@ def test_face_dataclass() -> None:
 
 @pytest.mark.skip(
     reason=(
-        "bench/fixtures/group_shot/ not present in this branch. "
+        "Fixture not present in this branch. "
         "To enable: commit a public-domain group photo (≥2 faces, ≤500 KB) "
-        "to worker/tests/fixtures/group_03.jpg, then remove this skip. "
+        "to worker/tests/data/group_03.jpg, then remove this skip. "
         "Models are expected at $WORKER_MODELS_DIR (default: /models)."
     )
 )
@@ -58,7 +58,7 @@ def test_detect_and_embed_group_shot() -> None:
     Integration smoke: group photo produces ≥2 detections and a (128,) embedding.
 
     Prerequisites:
-      - worker/tests/fixtures/group_03.jpg  (public-domain group photo, ≥2 faces)
+      - worker/tests/data/group_03.jpg  (public-domain group photo, ≥2 faces)
       - $WORKER_MODELS_DIR pointing at a directory containing:
           det_10g.onnx
           face_recognition_sface_2021dec.onnx
@@ -72,7 +72,7 @@ def test_detect_and_embed_group_shot() -> None:
     from worker.recognition.align import align_face
 
     models_dir = Path(os.environ.get("WORKER_MODELS_DIR", "/models"))
-    fixture = Path(__file__).parent / "fixtures" / "group_03.jpg"
+    fixture = Path(__file__).parent / "data" / "group_03.jpg"
 
     image = cv2.imread(str(fixture))
     assert image is not None, f"Could not load fixture: {fixture}"

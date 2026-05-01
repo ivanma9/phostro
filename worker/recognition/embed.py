@@ -8,6 +8,11 @@ Copied verbatim from bench/src/embed.py — only PROVIDERS is imported from
 .providers instead of being hardcoded, so Phase-4 GPU swap touches one file.
 """
 
+# WARNING: Kept in sync with bench/src/. Worker output must be byte-identical
+# to bench eval. test_bench_worker_parity.py guards drift.
+# When fixing a bug here: also update bench/src/embed.py and rerun the
+# parity test.
+
 from __future__ import annotations
 
 import hashlib
@@ -32,6 +37,8 @@ def load_embedder(models_dir: Path) -> "Embedder":
     if not model_path.exists():
         raise FileNotFoundError(
             f"Recognition model not found: {model_path}\n"
+            f"Set WORKER_MODELS_DIR to the directory containing {MODEL_FILENAME} "
+            f"(locally: WORKER_MODELS_DIR=$(pwd)/bench/models).\n"
             f"See bench/models/README.md for download instructions."
         )
     return Embedder(model_path)

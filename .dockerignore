@@ -1,0 +1,16 @@
+.git/
+.github/
+.next/
+node_modules/
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+**/*.py[cod]
+.env*
+.worktrees/
+bench/reports/
+bench/models/
+bench/fixtures/
+docs/
+*.log
+.DS_Store

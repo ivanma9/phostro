@@ -103,8 +103,7 @@ These belong to Phase 4 or later. Do **not** unblock them here.
 
 **Step 1: Build the Phase 1 worker stub locally**
 ```bash
-cd worker
-docker build -t phostro-worker:stub .
+docker build -f worker/Dockerfile -t phostro-worker:stub .
 ```
 Expected: image builds in <60s using the empty FastAPI stub from Phase 1 Task 1.
 
