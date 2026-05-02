@@ -24,7 +24,7 @@ export interface DispatcherRunner {
 
 type ReclaimedRow = {
   id: string
-  claimed_by: string | null
+  prev_claimed_by: string | null
 }
 
 /**
@@ -32,18 +32,28 @@ type ReclaimedRow = {
  *
  * Called on a fixed interval. Only emits `worker.watchdog.reclaimed` when N > 0
  * (quiet idle — log only when something happened).
+ *
+ * CTE pattern captures `claimed_by` BEFORE the UPDATE (Postgres `RETURNING`
+ * sees post-update values; the SET clears `claimed_by` to NULL, so
+ * `RETURNING claimed_by` would always be null).
  */
 async function runWatchdog(staleSec: number): Promise<void> {
   const result = (await db.execute(sql`
+    WITH stuck AS (
+      SELECT id, claimed_by AS prev_claimed_by
+      FROM photo_jobs
+      WHERE state = 'claimed'
+        AND claimed_at < now() - make_interval(secs => ${staleSec})
+    )
     UPDATE photo_jobs
     SET
       state      = 'queued',
       claimed_at = NULL,
       claimed_by = NULL,
       updated_at = now()
-    WHERE state = 'claimed'
-      AND claimed_at < now() - make_interval(secs => ${staleSec})
-    RETURNING id, claimed_by
+    FROM stuck
+    WHERE photo_jobs.id = stuck.id
+    RETURNING photo_jobs.id, stuck.prev_claimed_by
   `)) as unknown as ReclaimedRow[]
 
   const rows = Array.from(result)
@@ -53,7 +63,7 @@ async function runWatchdog(staleSec: number): Promise<void> {
     console.warn({
       event: 'worker.watchdog.reclaimed',
       n,
-      jobs: rows.map((r) => ({ id: r.id, previousClaimedBy: r.claimed_by })),
+      jobs: rows.map((r) => ({ id: r.id, previousClaimedBy: r.prev_claimed_by })),
     })
   }
   // Quiet idle: no log when n === 0

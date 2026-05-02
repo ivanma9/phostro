@@ -300,7 +300,14 @@ test('R4: watchdog resets stuck claimed job back to queued and emits worker.watc
   )
   expect(reclaimedCalls.length).toBeGreaterThanOrEqual(1)
   // First reclaim call should report N >= 1
-  expect((reclaimedCalls[0][0] as { n: number }).n).toBeGreaterThanOrEqual(1)
+  const payload = reclaimedCalls[0][0] as {
+    n: number
+    jobs: Array<{ id: string; previousClaimedBy: string | null }>
+  }
+  expect(payload.n).toBeGreaterThanOrEqual(1)
+  // Verify previousClaimedBy carries the pre-update worker id (CTE captures it
+  // before the SET clears claimed_by; without the CTE this would always be null).
+  expect(payload.jobs[0].previousClaimedBy).toBe('dead-worker')
 })
 
 // ── R5: Watchdog idle ─────────────────────────────────────────────────────────
