@@ -8,13 +8,14 @@ vi.mock('@/lib/worker/client', () => ({
   detectPhoto: vi.fn(),
 }))
 
-// Partial mock for complete module — markSucceeded can be intercepted in D6.
-// By default we call through to the real implementation.
+// Partial mock for complete module — markSucceeded and markFailed can be
+// intercepted (D6 verifies markFailed is NOT called on the race-loss path).
 vi.mock('@/lib/jobs/complete', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/lib/jobs/complete')>()
   return {
     ...real,
     markSucceeded: vi.fn(real.markSucceeded),
+    markFailed: vi.fn(real.markFailed),
   }
 })
 
@@ -91,10 +92,11 @@ beforeEach(async () => {
   const { detectPhoto } = await import('@/lib/worker/client')
   vi.mocked(detectPhoto).mockReset()
 
-  // Reset markSucceeded back to call-through to real implementation
-  const { markSucceeded } = await import('@/lib/jobs/complete')
+  // Reset markSucceeded + markFailed back to call-through to real implementations
+  const { markSucceeded, markFailed } = await import('@/lib/jobs/complete')
   const real = await vi.importActual<typeof import('@/lib/jobs/complete')>('@/lib/jobs/complete')
   vi.mocked(markSucceeded).mockImplementation(real.markSucceeded)
+  vi.mocked(markFailed).mockImplementation(real.markFailed)
 })
 
 // D1: Happy path — canned faces, rows inserted, has_detected_faces=true, job succeeded
@@ -255,8 +257,9 @@ test('D6: processOneJob handles race loss (markSucceeded returns null) gracefull
   })
 
   // Override markSucceeded to return null (simulates another worker already succeeded)
-  const { markSucceeded } = await import('@/lib/jobs/complete')
+  const { markSucceeded, markFailed } = await import('@/lib/jobs/complete')
   vi.mocked(markSucceeded).mockResolvedValueOnce(null)
+  vi.mocked(markFailed).mockClear()
 
   const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
@@ -279,6 +282,9 @@ test('D6: processOneJob handles race loss (markSucceeded returns null) gracefull
       (args[0] as { event?: string }).event === 'worker.dispatch.race_loss',
   )
   expect(raceLossCalls).toHaveLength(1)
+
+  // Spec invariant: markFailed must NOT be called on the race-loss path
+  expect(markFailed).not.toHaveBeenCalled()
 
   warnSpy.mockRestore()
 })

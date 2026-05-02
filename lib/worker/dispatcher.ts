@@ -131,6 +131,17 @@ export async function processOneJob(workerId: string): Promise<PhotoJob | null> 
         error: errorMessage,
         attempts: failResult.attempts,
       })
+    } else {
+      // markFailed returned null — late marker: job was no longer in 'claimed'
+      // state when we tried to mark it (e.g., reclaimed and succeeded by another
+      // worker between our claim and our error). The original error must still
+      // surface in operator logs so the failure isn't silently dropped.
+      console.warn({
+        event: 'worker.dispatch.mark_failed_late',
+        jobId,
+        photoId,
+        error: errorMessage,
+      })
     }
 
     return null
