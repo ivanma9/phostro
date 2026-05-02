@@ -1,0 +1,115 @@
+# Local dev stack — web + worker + dispatcher + db
+# Port 54330 for Postgres to avoid conflict with the test DB (54329).
+# Use `make up` / `make down` / `make stop` — see Makefile.
+#
+# Prerequisites:
+#   - bench/models/det_10g.onnx and bench/models/face_recognition_sface_2021dec.onnx
+#     must exist locally (gitignored). Run bench/download-models.sh or copy them manually.
+#   - WORKER_SECRET in .env.local (or exported in your shell).
+#     Defaults to the clearly-marked dev value below if unset.
+
+name: phostro-dev
+
+x-node-image: &node-image node:20.19-bookworm
+
+x-worker-secret: &worker-secret ${WORKER_SECRET:-dev-worker-secret-change-me}
+
+services:
+
+  # ── Database ────────────────────────────────────────────────────────────────
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: pw
+      POSTGRES_DB: postgres
+    ports:
+      - "54330:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 5s
+      retries: 15
+
+  # ── Worker (Python / FastAPI / onnxruntime) ──────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    environment:
+      WORKER_SECRET: *worker-secret
+      WORKER_MODELS_DIR: /models
+    volumes:
+      - ./bench/models:/models:ro
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" 2>/dev/null || exit 1"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+
+  # ── Dispatcher (Node — polls DB and calls worker) ───────────────────────
+  dispatcher:
+    image: *node-image
+    working_dir: /app
+    entrypoint: []
+    command: >
+      bash -c "
+        corepack enable &&
+        pnpm install --frozen-lockfile &&
+        pnpm tsx scripts/run-dispatcher.ts
+      "
+    environment:
+      DATABASE_URL: postgresql://postgres:pw@db:5432/postgres
+      WORKER_URL: http://worker:8000
+      WORKER_SECRET: *worker-secret
+    volumes:
+      - .:/app
+      - dispatcher_node_modules:/app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+
+  # ── Web (Next.js dev server) ────────────────────────────────────────────
+  web:
+    image: *node-image
+    working_dir: /app
+    entrypoint: []
+    command: >
+      bash -c "
+        corepack enable &&
+        pnpm install --frozen-lockfile &&
+        pnpm dev
+      "
+    environment:
+      DATABASE_URL: postgresql://postgres:pw@db:5432/postgres
+      WORKER_URL: http://worker:8000
+      WORKER_SECRET: *worker-secret
+      # Pass through R2 credentials from host env if present
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_BUCKET: ${R2_BUCKET:-phostro-photos}
+      SESSION_SECRET: ${SESSION_SECRET:-dev-session-secret-change-me-at-least-32-chars}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - web_node_modules:/app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+
+volumes:
+  pg_data:
+  web_node_modules:
+  dispatcher_node_modules:
