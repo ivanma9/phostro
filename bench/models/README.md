@@ -37,10 +37,7 @@ print('copied')
 "
 ```
 
-```
-# Option B — direct download (check current URL at time of use)
-# <add download URL here — visit https://github.com/deepinsight/insightface for the latest release URL>
-```
+**Option B — no stable standalone URL exists.** InsightFace does not publish a versioned permalink for `det_10g.onnx` outside the package. Use Option A, or run `worker/scripts/download_models.sh` which automates the pip-extraction with SHA-256 verification.
 
 **Expected file size:** ~16 MB
 
@@ -52,13 +49,12 @@ print('copied')
 
 **Download:**
 
-Visit https://github.com/opencv/opencv_zoo and navigate to `models/face_recognition_sface/`.
-
-Direct download command (verify URL is current before running):
-
+```bash
+curl --retry 3 -fL -o bench/models/face_recognition_sface_2021dec.onnx \
+  https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx
 ```
-# <add download URL here — visit https://github.com/opencv/opencv_zoo/tree/main/models/face_recognition_sface>
-```
+
+Or run `worker/scripts/download_models.sh` which downloads both models with SHA-256 verification.
 
 **Expected filename:** `face_recognition_sface_2021dec.onnx`  
 **Expected file size:** ~37 MB

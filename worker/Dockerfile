@@ -24,12 +24,18 @@ COPY worker/api/ ./worker/api/
 COPY worker/recognition/ ./worker/recognition/
 COPY worker/config/ ./worker/config/
 
-# Models are NOT baked in — mount at runtime via WORKER_MODELS_DIR.
-# Task 14 decides between volume-mount vs runtime-download vs bake-into-image.
+# Models baked into the image (Task 14 decision: ~53 MB total, image stays under 500 MB).
+# Run worker/scripts/download_models.sh first to populate worker/models/ locally.
+# In dev, docker-compose mounts ./bench/models:/models:ro — that mount takes
+# precedence and lets you swap models without rebuilding.
 ENV WORKER_MODELS_DIR=/models
 
 # Non-root user for least-privilege runtime
 RUN useradd -m -u 1000 worker
+
+# Bake models — owned by root, readable by worker (defensive: no write access)
+COPY worker/models /models
+
 USER worker
 
 EXPOSE 8000

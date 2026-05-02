@@ -4,7 +4,7 @@
 #
 # Prerequisites:
 #   - bench/models/det_10g.onnx and bench/models/face_recognition_sface_2021dec.onnx
-#     must exist locally (gitignored). Run bench/download-models.sh or copy them manually.
+#     must exist locally (gitignored). Run worker/scripts/download_models.sh or copy them manually.
 #   - WORKER_SECRET in .env.local (or exported in your shell).
 #     Defaults to the clearly-marked dev value below if unset.
 

@@ -61,3 +61,6 @@ __pycache__/
 *$py.class
 .venv/
 .pytest_cache/
+
+# ONNX model files (large binaries; download via worker/scripts/download_models.sh)
+worker/models/*.onnx
