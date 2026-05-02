@@ -64,3 +64,7 @@ __pycache__/
 
 # ONNX model files (large binaries; download via worker/scripts/download_models.sh)
 worker/models/*.onnx
+
+# LFW dataset cache (raw download + full extraction; not committed)
+bench/.lfw-cache/
+bench/fixtures/wedding-face-crops/_extract/
