@@ -2,6 +2,9 @@ import { sql } from 'drizzle-orm'
 import { db } from '@/db'
 import type { photoJobs } from '@/db/schema'
 
+type TxParam = Parameters<Parameters<typeof db.transaction>[0]>[0]
+type DbOrTx = typeof db | TxParam
+
 export type PhotoJob = typeof photoJobs.$inferSelect
 
 type RawCompleteRow = {
@@ -65,9 +68,13 @@ function mapRow(raw: RawCompleteRow): PhotoJob & { _eventId: string | null } {
  * null return so the surrounding transaction rolls back. Committing your work
  * after a null markSucceeded creates duplicate face_detections rows when the
  * other worker also commits.
+ *
+ * @param dbOrTx Optional Drizzle db or transaction handle. Defaults to the
+ *   global `db`. Pass the transaction handle when calling inside `db.transaction()`
+ *   so the UPDATE participates in the same transaction and rolls back atomically.
  */
-export async function markSucceeded(jobId: string): Promise<PhotoJob | null> {
-  const result = (await db.execute(sql`
+export async function markSucceeded(jobId: string, dbOrTx: DbOrTx = db): Promise<PhotoJob | null> {
+  const result = (await dbOrTx.execute(sql`
     UPDATE photo_jobs
     SET
       state       = 'succeeded',
@@ -119,11 +126,14 @@ export async function markSucceeded(jobId: string): Promise<PhotoJob | null> {
  *   Without the guard, the CASE expression would transition the succeeded row back
  *   to 'queued', causing duplicate processing.
  *
- * NOTE — Transaction safety for callers: this function does not itself open a
- *   transaction. Callers that run inside a transaction (e.g., inserting side-effects
- *   such as face_detections in the same tx) do NOT need to throw on null here —
- *   the null only occurs for stale late-markers, which are benign. The relevant
- *   transaction contract is on markSucceeded (see its JSDoc).
+ * NOTE — Transaction safety for callers: this function is intentionally
+ *   tx-unaware (no dbOrTx parameter). It must always be called OUTSIDE any
+ *   open transaction, because it needs to observe the committed DB state to
+ *   correctly distinguish retry vs dead-letter paths. The `AND state = 'claimed'`
+ *   guard also relies on the committed row state — calling inside a transaction
+ *   that has already mutated the row would produce incorrect results.
+ *   The Task 9 dispatcher calls markFailed only in the catch block, after any
+ *   transaction has already rolled back.
  *
  * Emits:
  *   worker.job.retry      (console.log / INFO)   on retry path
