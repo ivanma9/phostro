@@ -83,6 +83,9 @@ export const eventMembers = pgTable(
   (t) => [primaryKey({ columns: [t.eventId, t.userId] })],
 )
 
+// Authorship XOR: every photo has exactly one of (uploader_user_id, uploader_token).
+// Owner uploads set uploader_user_id; Pocket share-link contributors set uploader_token.
+// Enforced by photos_authorship_check below.
 export const photos = pgTable(
   'photos',
   {
@@ -90,9 +93,11 @@ export const photos = pgTable(
     eventId: uuid('event_id')
       .notNull()
       .references(() => events.id, { onDelete: 'cascade' }),
-    uploaderUserId: uuid('uploader_user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+    uploaderUserId: uuid('uploader_user_id').references(() => users.id, {
+      onDelete: 'cascade',
+    }),
+    uploaderToken: text('uploader_token'),
+    contributorDisplayName: text('contributor_display_name'),
 
     processingState: text('processing_state', {
       enum: ['pending', 'processing', 'ready', 'failed'],
@@ -126,7 +131,14 @@ export const photos = pgTable(
     index('photos_event_id_idx').on(t.eventId),
     index('photos_event_taken_at_idx').on(t.eventId, t.takenAt.desc()),
     index('photos_event_state_idx').on(t.eventId, t.processingState),
-    index('photos_uploader_event_idx').on(t.uploaderUserId, t.eventId),
+    // Partial: only owner-authored rows. Anonymous contributions don't pollute this index.
+    index('photos_uploader_event_idx')
+      .on(t.uploaderUserId, t.eventId)
+      .where(sql`uploader_user_id IS NOT NULL`),
+    check(
+      'photos_authorship_check',
+      sql`(uploader_user_id IS NOT NULL) <> (uploader_token IS NOT NULL)`,
+    ),
   ],
 )
 
@@ -234,10 +246,39 @@ export const faceDetections = pgTable(
   ],
 )
 
+// Share links let Pocket owners hand a token URL to contributors who upload without
+// auth. Token plaintext is shown to the user once; only token_hash is stored.
+// Verification: lookup by hash, check revoked_at IS NULL, expires_at > now(),
+// upload_count < max_uploads (or max_uploads IS NULL = unlimited).
+export const shareLinks = pgTable(
+  'share_links',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    expiresAt: timestamp('expires_at').notNull(),
+    revokedAt: timestamp('revoked_at'),
+    // null = unlimited uploads. Otherwise contributor uploads return 429 once
+    // upload_count reaches this value.
+    maxUploads: integer('max_uploads'),
+    uploadCount: integer('upload_count').notNull().default(0),
+  },
+  (t) => [
+    uniqueIndex('share_links_token_hash_uidx').on(t.tokenHash),
+    index('share_links_event_id_idx').on(t.eventId),
+  ],
+)
+
 // VIEW CONTRACT: failed_photo_jobs_recent (id, photo_id, event_id, uploader_user_id,
 // attempts, last_error, last_error_at, failed_at). Operator runbook (Task 17) and
 // failure-visibility checks depend on this column set. Renaming or removing
 // columns from photo_jobs/photos requires updating this view in the same migration.
+// Note (Pocket v0): uploader_user_id is now nullable. Anonymous Pocket contributions
+// surface here with NULL uploader_user_id. Operators wanting the source must join
+// to photos.uploader_token directly.
 export const failedPhotoJobsRecent = pgView('failed_photo_jobs_recent').as(
   (qb) =>
     qb
