@@ -69,3 +69,102 @@ jobs:
 
       - name: E2E tests
         run: pnpm test:e2e
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Phase 3 Task 15 jobs — Python worker, Docker image, threshold guard
+  # ─────────────────────────────────────────────────────────────────────
+
+  worker-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: worker/requirements.txt
+
+      - name: Cache ONNX models
+        id: cache-models
+        uses: actions/cache@v4
+        with:
+          path: bench/models
+          key: onnx-models-v1-${{ hashFiles('worker/scripts/download_models.sh') }}
+
+      - name: Install worker dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r worker/requirements.txt
+
+      - name: Download ONNX models (cache miss)
+        if: steps.cache-models.outputs.cache-hit != 'true'
+        run: bash worker/scripts/download_models.sh --out bench/models
+
+      - name: Pytest
+        env:
+          WORKER_MODELS_DIR: ${{ github.workspace }}/bench/models
+          WORKER_SECRET: ci-test-secret
+        run: |
+          cd worker
+          python -m pytest tests/ -v
+
+  worker-image:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache ONNX models
+        id: cache-models
+        uses: actions/cache@v4
+        with:
+          path: worker/models
+          key: onnx-models-image-v1-${{ hashFiles('worker/scripts/download_models.sh') }}
+
+      - name: Download ONNX models for image bake
+        if: steps.cache-models.outputs.cache-hit != 'true'
+        run: |
+          # Models must be present at worker/models/ so the Dockerfile's
+          # `COPY worker/models /models` step succeeds.
+          pip install --upgrade pip
+          bash worker/scripts/download_models.sh --out worker/models
+
+      - name: Build worker image
+        run: docker build -f worker/Dockerfile -t phostro-worker:ci .
+
+      - name: Verify image imports cleanly
+        run: |
+          docker run --rm \
+            -e WORKER_SECRET=ci-test-secret \
+            -e WORKER_MODELS_DIR=/models \
+            phostro-worker:ci \
+            python -c "from worker.main import app; print('app loaded:', app.title or 'OK')"
+
+  threshold-guard:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reject placeholder thresholds
+        run: |
+          if grep -q "PLACEHOLDER" worker/config/thresholds.json; then
+            echo "::error file=worker/config/thresholds.json::worker/config/thresholds.json still contains 'PLACEHOLDER'."
+            echo ""
+            echo "This means Task 11's labeled bench eval has not been run, or its result"
+            echo "was not committed. Production thresholds must be locked before merge."
+            echo ""
+            echo "Current contents:"
+            cat worker/config/thresholds.json
+            exit 1
+          fi
+          echo "Thresholds are locked (no PLACEHOLDER string found)."
+          cat worker/config/thresholds.json
