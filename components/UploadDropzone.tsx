@@ -18,7 +18,7 @@ export function UploadDropzone({ eventId }: { eventId: string }) {
     )
     if (accepted.length === 0) return
     setProgress({ done: 0, total: accepted.length, failed: 0 })
-    await uploadBatch(eventId, accepted, 3, setProgress)
+    await uploadBatch({ kind: 'event', eventId }, accepted, 3, setProgress)
     // After all done, refresh the gallery by hard-reloading. Phase 5 will replace
     // this with optimistic UI / incremental rendering.
     window.location.reload()

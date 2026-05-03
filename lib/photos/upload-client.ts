@@ -2,8 +2,22 @@ export type UploadProgress = { done: number; total: number; failed: number }
 
 type UploadResult = { ok: true; photoId: string } | { ok: false; reason: string }
 
-export async function uploadOne(eventId: string, file: File): Promise<UploadResult> {
-  const initRes = await fetch(`/api/events/${eventId}/photos/init`, {
+export type UploadTarget = { kind: 'event'; eventId: string } | { kind: 'token'; token: string }
+
+function initUrl(target: UploadTarget): string {
+  return target.kind === 'event'
+    ? `/api/events/${target.eventId}/photos/init`
+    : `/api/p/${target.token}/init`
+}
+
+function finalizeUrl(target: UploadTarget, photoId: string): string {
+  return target.kind === 'event'
+    ? `/api/events/${target.eventId}/photos/${photoId}/finalize`
+    : `/api/p/${target.token}/finalize/${photoId}`
+}
+
+export async function uploadOne(target: UploadTarget, file: File): Promise<UploadResult> {
+  const initRes = await fetch(initUrl(target), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -26,7 +40,7 @@ export async function uploadOne(eventId: string, file: File): Promise<UploadResu
     return { ok: false, reason: `upload failed (${putRes.status})` }
   }
 
-  const finRes = await fetch(`/api/events/${eventId}/photos/${photoId}/finalize`, {
+  const finRes = await fetch(finalizeUrl(target, photoId), {
     method: 'POST',
   })
   if (!finRes.ok) {
@@ -36,7 +50,7 @@ export async function uploadOne(eventId: string, file: File): Promise<UploadResu
 }
 
 export async function uploadBatch(
-  eventId: string,
+  target: UploadTarget,
   files: File[],
   concurrency: number,
   onProgress: (p: UploadProgress) => void,
@@ -50,7 +64,7 @@ export async function uploadBatch(
   async function worker() {
     while (i < total) {
       const idx = i++
-      const r = await uploadOne(eventId, files[idx]).catch(
+      const r = await uploadOne(target, files[idx]).catch(
         (e): UploadResult => ({ ok: false, reason: String(e) }),
       )
       results[idx] = r
