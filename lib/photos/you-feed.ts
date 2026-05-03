@@ -1,3 +1,10 @@
+// Pocket v0 Task 8 decision: filter runs as SQL in Next.js, NOT as a worker call.
+// Rationale: pgvector cosine distance with the existing ivfflat index is fast enough
+// at v0 scale. A worker round-trip per page load (HTTP + JSON encode/decode + presigned
+// URL minting) adds ~300ms+ for no compute benefit. The perf test in
+// tests/perf/you-feed-perf.test.ts verifies < 1500ms with 100 detections; the deploy
+// SLO is < 500ms.
+
 import { sql } from 'drizzle-orm'
 import { db } from '@/db'
 import { getMatchMaxDistance } from '@/lib/worker/thresholds'
