@@ -48,6 +48,14 @@ export async function createPresignedGetUrl(
   key: string,
   expiresInSeconds: number,
 ): Promise<string> {
+  // Local smoke-test seam: when R2_LOCAL_OVERRIDE_BASE_URL is set, return a
+  // direct URL against that base instead of minting a real presigned R2 URL.
+  // Used by scripts/smoke-e2e.ts to point the worker at a local fixture
+  // server. Never set this in production.
+  const override = process.env.R2_LOCAL_OVERRIDE_BASE_URL
+  if (override) {
+    return `${override.replace(/\/$/, '')}/${key}`
+  }
   const cmd = new GetObjectCommand({ Bucket: bucket(), Key: key })
   return getSignedUrl(client(), cmd, { expiresIn: expiresInSeconds })
 }

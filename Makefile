@@ -1,4 +1,4 @@
-.PHONY: up down stop logs migrate smoke
+.PHONY: up down stop logs migrate smoke smoke-e2e
 
 # Start the full dev stack (rebuilds images on changes).
 up:
@@ -22,6 +22,22 @@ migrate:
 	docker compose exec web pnpm db:migrate
 
 # Lightweight smoke check: verify /health endpoints + assert no failed jobs.
-# Does NOT do a real upload (needs R2 credentials). Task 18 owns the full E2E smoke.
+# Does NOT do a real upload (needs R2 credentials). Use `make smoke-e2e` for the
+# full pipeline.
 smoke:
 	./scripts/smoke-compose.sh
+
+# Phase 3 Task 18 — full end-to-end smoke. Spins up a local fixture HTTP
+# server, inserts real DB rows, exercises real ONNX inference in the worker,
+# verifies face_detections + face_clusters appear, then verifies the failure
+# path (retry → dead-letter).
+#
+# Prerequisites:
+#   - Postgres reachable at DATABASE_URL (default: postgres://postgres:postgres@localhost:54329/postgres)
+#   - Worker running at WORKER_URL (default: http://localhost:8000) with WORKER_SECRET=ci-test-secret
+#
+# Easiest worker startup:
+#   WORKER_SECRET=ci-test-secret WORKER_MODELS_DIR=$(PWD)/bench/models \
+#     worker/.venv/bin/uvicorn worker.main:app --host 127.0.0.1 --port 8000
+smoke-e2e:
+	pnpm tsx scripts/smoke-e2e.ts
