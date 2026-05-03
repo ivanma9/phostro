@@ -68,3 +68,4 @@ worker/models/*.onnx
 # LFW dataset cache (raw download + full extraction; not committed)
 bench/.lfw-cache/
 bench/fixtures/wedding-face-crops/_extract/
+bench/.lfw-extract/
