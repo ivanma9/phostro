@@ -1,0 +1,326 @@
+{
+  "dataset_id": "wedding-face-crops",
+  "description": "Generated from folder-per-identity layout. Each file is treated as one labeled face sample.",
+  "samples": [
+    {
+      "sample_id": "lfw_colin_powell_colin_powell_0001",
+      "file": "lfw_colin_powell/Colin_Powell_0001.jpg",
+      "identity_id": "lfw_colin_powell",
+      "cluster_id": "lfw_colin_powell",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_colin_powell_colin_powell_0060",
+      "file": "lfw_colin_powell/Colin_Powell_0060.jpg",
+      "identity_id": "lfw_colin_powell",
+      "cluster_id": "lfw_colin_powell",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_colin_powell_colin_powell_0119",
+      "file": "lfw_colin_powell/Colin_Powell_0119.jpg",
+      "identity_id": "lfw_colin_powell",
+      "cluster_id": "lfw_colin_powell",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_colin_powell_colin_powell_0177",
+      "file": "lfw_colin_powell/Colin_Powell_0177.jpg",
+      "identity_id": "lfw_colin_powell",
+      "cluster_id": "lfw_colin_powell",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_colin_powell_colin_powell_0236",
+      "file": "lfw_colin_powell/Colin_Powell_0236.jpg",
+      "identity_id": "lfw_colin_powell",
+      "cluster_id": "lfw_colin_powell",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_donald_rumsfeld_donald_rumsfeld_0001",
+      "file": "lfw_donald_rumsfeld/Donald_Rumsfeld_0001.jpg",
+      "identity_id": "lfw_donald_rumsfeld",
+      "cluster_id": "lfw_donald_rumsfeld",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_donald_rumsfeld_donald_rumsfeld_0030",
+      "file": "lfw_donald_rumsfeld/Donald_Rumsfeld_0030.jpg",
+      "identity_id": "lfw_donald_rumsfeld",
+      "cluster_id": "lfw_donald_rumsfeld",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_donald_rumsfeld_donald_rumsfeld_0060",
+      "file": "lfw_donald_rumsfeld/Donald_Rumsfeld_0060.jpg",
+      "identity_id": "lfw_donald_rumsfeld",
+      "cluster_id": "lfw_donald_rumsfeld",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_donald_rumsfeld_donald_rumsfeld_0090",
+      "file": "lfw_donald_rumsfeld/Donald_Rumsfeld_0090.jpg",
+      "identity_id": "lfw_donald_rumsfeld",
+      "cluster_id": "lfw_donald_rumsfeld",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_donald_rumsfeld_donald_rumsfeld_0121",
+      "file": "lfw_donald_rumsfeld/Donald_Rumsfeld_0121.jpg",
+      "identity_id": "lfw_donald_rumsfeld",
+      "cluster_id": "lfw_donald_rumsfeld",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_george_w_bush_george_w_bush_0001",
+      "file": "lfw_george_w_bush/George_W_Bush_0001.jpg",
+      "identity_id": "lfw_george_w_bush",
+      "cluster_id": "lfw_george_w_bush",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_george_w_bush_george_w_bush_0133",
+      "file": "lfw_george_w_bush/George_W_Bush_0133.jpg",
+      "identity_id": "lfw_george_w_bush",
+      "cluster_id": "lfw_george_w_bush",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_george_w_bush_george_w_bush_0265",
+      "file": "lfw_george_w_bush/George_W_Bush_0265.jpg",
+      "identity_id": "lfw_george_w_bush",
+      "cluster_id": "lfw_george_w_bush",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_george_w_bush_george_w_bush_0398",
+      "file": "lfw_george_w_bush/George_W_Bush_0398.jpg",
+      "identity_id": "lfw_george_w_bush",
+      "cluster_id": "lfw_george_w_bush",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_george_w_bush_george_w_bush_0530",
+      "file": "lfw_george_w_bush/George_W_Bush_0530.jpg",
+      "identity_id": "lfw_george_w_bush",
+      "cluster_id": "lfw_george_w_bush",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_gerhard_schroeder_gerhard_schroeder_0001",
+      "file": "lfw_gerhard_schroeder/Gerhard_Schroeder_0001.jpg",
+      "identity_id": "lfw_gerhard_schroeder",
+      "cluster_id": "lfw_gerhard_schroeder",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_gerhard_schroeder_gerhard_schroeder_0028",
+      "file": "lfw_gerhard_schroeder/Gerhard_Schroeder_0028.jpg",
+      "identity_id": "lfw_gerhard_schroeder",
+      "cluster_id": "lfw_gerhard_schroeder",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_gerhard_schroeder_gerhard_schroeder_0055",
+      "file": "lfw_gerhard_schroeder/Gerhard_Schroeder_0055.jpg",
+      "identity_id": "lfw_gerhard_schroeder",
+      "cluster_id": "lfw_gerhard_schroeder",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_gerhard_schroeder_gerhard_schroeder_0082",
+      "file": "lfw_gerhard_schroeder/Gerhard_Schroeder_0082.jpg",
+      "identity_id": "lfw_gerhard_schroeder",
+      "cluster_id": "lfw_gerhard_schroeder",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_gerhard_schroeder_gerhard_schroeder_0109",
+      "file": "lfw_gerhard_schroeder/Gerhard_Schroeder_0109.jpg",
+      "identity_id": "lfw_gerhard_schroeder",
+      "cluster_id": "lfw_gerhard_schroeder",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_hugo_chavez_hugo_chavez_0001",
+      "file": "lfw_hugo_chavez/Hugo_Chavez_0001.jpg",
+      "identity_id": "lfw_hugo_chavez",
+      "cluster_id": "lfw_hugo_chavez",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_hugo_chavez_hugo_chavez_0017",
+      "file": "lfw_hugo_chavez/Hugo_Chavez_0017.jpg",
+      "identity_id": "lfw_hugo_chavez",
+      "cluster_id": "lfw_hugo_chavez",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_hugo_chavez_hugo_chavez_0035",
+      "file": "lfw_hugo_chavez/Hugo_Chavez_0035.jpg",
+      "identity_id": "lfw_hugo_chavez",
+      "cluster_id": "lfw_hugo_chavez",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_hugo_chavez_hugo_chavez_0053",
+      "file": "lfw_hugo_chavez/Hugo_Chavez_0053.jpg",
+      "identity_id": "lfw_hugo_chavez",
+      "cluster_id": "lfw_hugo_chavez",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_hugo_chavez_hugo_chavez_0071",
+      "file": "lfw_hugo_chavez/Hugo_Chavez_0071.jpg",
+      "identity_id": "lfw_hugo_chavez",
+      "cluster_id": "lfw_hugo_chavez",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_jacques_chirac_jacques_chirac_0001",
+      "file": "lfw_jacques_chirac/Jacques_Chirac_0001.jpg",
+      "identity_id": "lfw_jacques_chirac",
+      "cluster_id": "lfw_jacques_chirac",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_jacques_chirac_jacques_chirac_0013",
+      "file": "lfw_jacques_chirac/Jacques_Chirac_0013.jpg",
+      "identity_id": "lfw_jacques_chirac",
+      "cluster_id": "lfw_jacques_chirac",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_jacques_chirac_jacques_chirac_0026",
+      "file": "lfw_jacques_chirac/Jacques_Chirac_0026.jpg",
+      "identity_id": "lfw_jacques_chirac",
+      "cluster_id": "lfw_jacques_chirac",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_jacques_chirac_jacques_chirac_0039",
+      "file": "lfw_jacques_chirac/Jacques_Chirac_0039.jpg",
+      "identity_id": "lfw_jacques_chirac",
+      "cluster_id": "lfw_jacques_chirac",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_jacques_chirac_jacques_chirac_0052",
+      "file": "lfw_jacques_chirac/Jacques_Chirac_0052.jpg",
+      "identity_id": "lfw_jacques_chirac",
+      "cluster_id": "lfw_jacques_chirac",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_junichiro_koizumi_junichiro_koizumi_0001",
+      "file": "lfw_junichiro_koizumi/Junichiro_Koizumi_0001.jpg",
+      "identity_id": "lfw_junichiro_koizumi",
+      "cluster_id": "lfw_junichiro_koizumi",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_junichiro_koizumi_junichiro_koizumi_0016",
+      "file": "lfw_junichiro_koizumi/Junichiro_Koizumi_0016.jpg",
+      "identity_id": "lfw_junichiro_koizumi",
+      "cluster_id": "lfw_junichiro_koizumi",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_junichiro_koizumi_junichiro_koizumi_0031",
+      "file": "lfw_junichiro_koizumi/Junichiro_Koizumi_0031.jpg",
+      "identity_id": "lfw_junichiro_koizumi",
+      "cluster_id": "lfw_junichiro_koizumi",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_junichiro_koizumi_junichiro_koizumi_0045",
+      "file": "lfw_junichiro_koizumi/Junichiro_Koizumi_0045.jpg",
+      "identity_id": "lfw_junichiro_koizumi",
+      "cluster_id": "lfw_junichiro_koizumi",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_junichiro_koizumi_junichiro_koizumi_0060",
+      "file": "lfw_junichiro_koizumi/Junichiro_Koizumi_0060.jpg",
+      "identity_id": "lfw_junichiro_koizumi",
+      "cluster_id": "lfw_junichiro_koizumi",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_tony_blair_tony_blair_0001",
+      "file": "lfw_tony_blair/Tony_Blair_0001.jpg",
+      "identity_id": "lfw_tony_blair",
+      "cluster_id": "lfw_tony_blair",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_tony_blair_tony_blair_0037",
+      "file": "lfw_tony_blair/Tony_Blair_0037.jpg",
+      "identity_id": "lfw_tony_blair",
+      "cluster_id": "lfw_tony_blair",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_tony_blair_tony_blair_0073",
+      "file": "lfw_tony_blair/Tony_Blair_0073.jpg",
+      "identity_id": "lfw_tony_blair",
+      "cluster_id": "lfw_tony_blair",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_tony_blair_tony_blair_0108",
+      "file": "lfw_tony_blair/Tony_Blair_0108.jpg",
+      "identity_id": "lfw_tony_blair",
+      "cluster_id": "lfw_tony_blair",
+      "crop_mode": "full_image",
+      "tags": []
+    },
+    {
+      "sample_id": "lfw_tony_blair_tony_blair_0144",
+      "file": "lfw_tony_blair/Tony_Blair_0144.jpg",
+      "identity_id": "lfw_tony_blair",
+      "cluster_id": "lfw_tony_blair",
+      "crop_mode": "full_image",
+      "tags": []
+    }
+  ]
+}

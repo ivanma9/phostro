@@ -6,3 +6,7 @@
 !.gitkeep
 !**/README.md
 !**/*.json
+
+# Allow LFW and team face-crop fixtures for Task 11 threshold eval
+!wedding-face-crops/lfw_*/*.jpg
+!wedding-face-crops/team_*/*.jpg

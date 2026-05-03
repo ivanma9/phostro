@@ -54,6 +54,64 @@ Photo-courier MVP — Next.js + Postgres + pgvector. See `docs/plans/2026-04-27-
 
 `pnpm test` and `pnpm test:e2e` will refuse to run if `TEST_DATABASE_URL` is unset — by design, so a stray run can never mutate the dev DB.
 
+## Local dev with worker
+
+Use Docker Compose to run the full stack (web + worker + dispatcher + Postgres) locally with a single command.
+
+### Prerequisites
+
+1. **Docker Desktop** (or Docker Engine + Compose v2).
+2. **Model files** — the face-detection and recognition ONNX models must be present at:
+   ```
+   bench/models/det_10g.onnx
+   bench/models/face_recognition_sface_2021dec.onnx
+   ```
+   These are gitignored. Copy them from a teammate or run `bench/download-models.sh` if it exists.
+3. **`.env.local`** — set at minimum:
+   ```
+   WORKER_SECRET=<any secret, ≥ 32 chars>
+   SESSION_SECRET=<any secret, ≥ 32 chars>
+   # R2 credentials if you want photo uploads to work:
+   R2_ACCOUNT_ID=...
+   R2_ACCESS_KEY_ID=...
+   R2_SECRET_ACCESS_KEY=...
+   R2_BUCKET=phostro-photos
+   ```
+   Compose reads `.env.local` automatically via Docker Compose's env-file resolution.
+   If `WORKER_SECRET` is unset, a clearly-marked dev default is used — **never use the default in production**.
+
+### Ports
+
+| Service  | Host port | Notes                                          |
+|----------|-----------|------------------------------------------------|
+| web      | 3000      | Next.js dev server with hot reload             |
+| worker   | 8000      | Python/FastAPI face-recognition worker         |
+| db       | **54330** | Dev Postgres — avoids conflict with test DB (54329) |
+
+If you run both the dev compose stack and `pnpm test:db:up` simultaneously, ports will not conflict.
+
+### Workflow
+
+```bash
+make up        # Build images and start all services (foreground, Ctrl-C to stop)
+make stop      # Stop containers, keep DB data (pg_data volume preserved)
+make down      # Stop containers AND wipe volumes — fresh start
+make logs      # Tail logs from worker + dispatcher only
+make migrate   # Run pending DB migrations inside the web container
+make smoke     # Health-check /health endpoints + assert no failed jobs
+```
+
+First boot is slow — the web and dispatcher containers install `node_modules` inside
+the container on first start. Subsequent starts reuse the named `web_node_modules`
+and `dispatcher_node_modules` volumes.
+
+### Architecture note
+
+The `worker/.dockerignore` file is **not** needed and has not been created. The
+`worker/Dockerfile` uses the repo root as its build context (`build: { context: .,
+dockerfile: worker/Dockerfile }`), so the root `.dockerignore` already excludes
+`node_modules`, `.env*`, `bench/models`, etc.
+
 ## Tech
 
 Next.js 16 (App Router) · React 19 · Tailwind 4 · Drizzle ORM + postgres-js · pgvector · iron-session · Resend · Vitest · Playwright · Biome.

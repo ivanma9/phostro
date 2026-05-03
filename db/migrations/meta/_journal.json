@@ -36,6 +36,20 @@
       "when": 1777604133404,
       "tag": "0004_common_pyro",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1777635679814,
+      "tag": "0005_real_smiling_tiger",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1777654823522,
+      "tag": "0006_foamy_maddog",
+      "breakpoints": true
     }
   ]
 }

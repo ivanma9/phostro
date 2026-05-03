@@ -1,14 +1,21 @@
 import {
+  type AnyPgColumn,
   boolean,
+  check,
   customType,
   index,
   integer,
+  jsonb,
   pgTable,
+  pgView,
   primaryKey,
+  real,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
+import { and, desc, eq, gt, sql } from 'drizzle-orm'
 
 const vector = (name: string, dim: number) =>
   customType<{ data: number[]; driverData: string }>({
@@ -121,4 +128,136 @@ export const photos = pgTable(
     index('photos_event_state_idx').on(t.eventId, t.processingState),
     index('photos_uploader_event_idx').on(t.uploaderUserId, t.eventId),
   ],
+)
+
+export const photoJobs = pgTable(
+  'photo_jobs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    photoId: uuid('photo_id')
+      .notNull()
+      .references(() => photos.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull().default('detect'),
+    // TS literal union must stay in sync with CHECK constraint below.
+    state: text('state', {
+      enum: ['queued', 'claimed', 'succeeded', 'failed'],
+    })
+      .notNull()
+      .default('queued'),
+    attempts: integer('attempts').notNull().default(0),
+    maxAttempts: integer('max_attempts').notNull().default(5),
+    claimedAt: timestamp('claimed_at'),
+    claimedBy: text('claimed_by'),
+    lastError: text('last_error'),
+    lastErrorAt: timestamp('last_error_at'),
+    succeededAt: timestamp('succeeded_at'),
+    failedAt: timestamp('failed_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    // NOTE: callers MUST set updatedAt = new Date() on every state-mutating UPDATE.
+    // No trigger; helpers in lib/jobs/ (Tasks 5–6) own this discipline.
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('photo_jobs_photo_id_idx').on(t.photoId),
+    // Composite index supports Task 5 SKIP-LOCKED claim query:
+    // SELECT ... WHERE state = 'queued' ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED
+    index('photo_jobs_state_created_idx').on(t.state, t.createdAt),
+    uniqueIndex('photo_jobs_photo_id_kind_active_uidx')
+      .on(t.photoId, t.kind)
+      .where(sql`state IN ('queued','claimed','succeeded')`),
+    check(
+      'photo_jobs_state_check',
+      sql`state IN ('queued','claimed','succeeded','failed')`,
+    ),
+  ],
+)
+
+// CIRCULAR FK PAIR: face_detections.cluster_id → face_clusters.id and
+// face_clusters.representative_detection_id → face_detections.id.
+// Both FKs use the AnyPgColumn thunk annotation to break the TS7022/TS7024
+// circular-reference cycle. Drizzle 0.45 resolves thunks at codegen time so
+// both FKs are emitted natively by drizzle-kit — no hand-appended SQL needed.
+export const faceClusters = pgTable(
+  'face_clusters',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    // Nullable; recomputed by clustering job.
+    representativeDetectionId: uuid('representative_detection_id').references(
+      (): AnyPgColumn => faceDetections.id,
+      { onDelete: 'set null' },
+    ),
+    representativeEmbedding: vector('representative_embedding', 128).notNull(),
+    memberCount: integer('member_count').notNull().default(1),
+    // Phase 4 sets this; intentionally NULL in Phase 3.
+    // ON DELETE SET NULL: if the user account is deleted the cluster stays unclaimed.
+    claimedByUserId: uuid('claimed_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('face_clusters_event_id_idx').on(t.eventId)],
+)
+
+export const faceDetections = pgTable(
+  'face_detections',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    photoId: uuid('photo_id')
+      .notNull()
+      .references(() => photos.id, { onDelete: 'cascade' }),
+    bboxX1: real('bbox_x1').notNull(),
+    bboxY1: real('bbox_y1').notNull(),
+    bboxX2: real('bbox_x2').notNull(),
+    bboxY2: real('bbox_y2').notNull(),
+    confidence: real('confidence').notNull(),
+    landmarksJson: jsonb('landmarks_json').notNull(),
+    embedding: vector('embedding', 128).notNull(),
+    // Nullable; set by clustering job. ON DELETE SET NULL so losing a cluster
+    // doesn't cascade-delete detection rows.
+    clusterId: uuid('cluster_id').references(() => faceClusters.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('face_detections_photo_id_idx').on(t.photoId),
+    // lists=100 from pgvector docs (≈rows/1000) — over-tuned at MVP scale; revisit
+    // when face_detections exceeds ~50k rows per event. The planner often prefers
+    // seq-scan over this index at low row counts, which is correct behavior.
+    index('face_detections_embedding_idx')
+      .using('ivfflat', t.embedding.op('vector_cosine_ops'))
+      .with({ lists: 100 }),
+  ],
+)
+
+// VIEW CONTRACT: failed_photo_jobs_recent (id, photo_id, event_id, uploader_user_id,
+// attempts, last_error, last_error_at, failed_at). Operator runbook (Task 17) and
+// failure-visibility checks depend on this column set. Renaming or removing
+// columns from photo_jobs/photos requires updating this view in the same migration.
+export const failedPhotoJobsRecent = pgView('failed_photo_jobs_recent').as(
+  (qb) =>
+    qb
+      .select({
+        id: photoJobs.id,
+        photoId: photoJobs.photoId,
+        eventId: photos.eventId,
+        uploaderUserId: photos.uploaderUserId,
+        attempts: photoJobs.attempts,
+        lastError: photoJobs.lastError,
+        lastErrorAt: photoJobs.lastErrorAt,
+        failedAt: photoJobs.failedAt,
+      })
+      .from(photoJobs)
+      .innerJoin(photos, eq(photos.id, photoJobs.photoId))
+      .where(
+        and(
+          eq(photoJobs.state, 'failed'),
+          gt(photoJobs.failedAt, sql`now() - interval '7 days'`),
+        ),
+      )
+      .orderBy(desc(photoJobs.failedAt)),
 )

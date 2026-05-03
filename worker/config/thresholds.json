@@ -1,0 +1,8 @@
+{
+  "match_max_distance": 0.528,
+  "maybe_max_distance": 0.595,
+  "_source_report": "bench/reports/20260503T010115Z-wedding-face-crops/labeled_report.md",
+  "_dataset_size": "8 identities × 5 photos = 40 face crops (LFW only)",
+  "_eval_date": "2026-05-03",
+  "_decision_doc": "docs/ops/threshold-decision-2026-04.md"
+}

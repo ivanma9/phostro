@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/db'
 import { photos } from '@/db/schema'
 import { getCurrentUser } from '@/lib/auth/current-user'
+import { enqueuePhotoJob } from '@/lib/jobs/enqueue'
 import { MAX_UPLOAD_BYTES, originalKey, previewKey } from '@/lib/photos/keys'
 import { ImageProcessError, processImage } from '@/lib/photos/process'
 import { deleteObject, getObjectBuffer, headObject, putObject } from '@/lib/photos/r2'
@@ -151,6 +152,13 @@ export async function POST(
     })
     .where(eq(photos.id, claimedRow.id))
     .returning()
+
+  try {
+    await enqueuePhotoJob(claimedRow.id)
+  } catch (err) {
+    console.error({ event: 'worker.enqueue.failed', photoId: claimedRow.id, error: String(err) })
+    return NextResponse.json({ error: 'enqueue failed' }, { status: 500 })
+  }
 
   return NextResponse.json({ photo: final })
 }
