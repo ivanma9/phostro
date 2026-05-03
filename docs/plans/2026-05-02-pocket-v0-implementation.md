@@ -221,7 +221,7 @@ UX:
 
 POST endpoint accepting one selfie:
 
-- Calls existing worker `/detect` and `/embed` endpoints (HMAC).
+- Calls existing worker `/detect` endpoint (HMAC) — embeddings come back inside the detect response; there is no separate `/embed` HTTP endpoint.
 - **Reject if not exactly one face with `confidence > 0.9`.** Multiple faces → `400 { error: 'multiple_faces' }`. Zero qualifying faces → `400 { error: 'no_face' }`. UI prompts a retake. Rationale: the founder is the only enrolled user in v0; one bad enrollment poisons every match in the You feed forever. The friction cost of "retake your selfie" is near-zero; the failure cost of silently enrolling a background face from a group selfie is catastrophic.
 - On the single-face success case, write its embedding to `users.face_embedding`, `users.face_quality_score`, `users.face_enrolled_at`.
 - Returns `{quality}` on success; `{error}` on rejection.
