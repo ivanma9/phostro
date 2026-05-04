@@ -17,7 +17,8 @@
     "test:db:up": "docker compose -f docker-compose.test.yml up -d --wait",
     "test:db:down": "docker compose -f docker-compose.test.yml down -v",
     "test:db:migrate": "DATABASE_URL=postgres://postgres:postgres@localhost:54329/postgres drizzle-kit migrate",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "smoke:filter": "pnpm tsx scripts/smoke-filter-correctness.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1040.0",
