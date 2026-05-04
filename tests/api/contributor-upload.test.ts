@@ -151,6 +151,11 @@ describe('Contributor upload flow', () => {
   })
 
   test('init returns 404 for invalid (never-minted) token', async () => {
+    // This also covers the "tampered token" case from the plan. The implementation
+    // stores token_hash and does a hash lookup — there is no HMAC to verify. A
+    // tampered token that is still well-formed (64 hex chars) produces a SHA-256
+    // hash that matches no row, which is mechanically identical to a never-minted
+    // token. Both paths collapse to ShareLinkError('invalid') → 404.
     const res = await callInit('aaaaaabbbbbbccccccddddddeeeeeeffffffff00000011111122222233333344', {
       filename: 'x.jpg',
       mimeType: 'image/jpeg',
@@ -268,6 +273,81 @@ describe('Contributor upload flow', () => {
     // upload_count is exactly 1, not 2
     const [link] = await db.select().from(shareLinks).where(eq(shareLinks.id, linkId))
     expect(link.uploadCount).toBe(1)
+  })
+
+  // ── Task 10: finalize token-failure paths ──────────────────────────────────
+
+  test('finalize returns 404 for invalid (never-minted) token', async () => {
+    // A random 64-hex token that was never inserted produces no matching row.
+    // This path is equivalent to a "tampered" token (see rationale in the init
+    // test above): hash-lookup finds nothing → ShareLinkError('invalid') → 404.
+    const fakeToken = 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
+    const fakePhotoId = '00000000-0000-0000-0000-000000000000'
+    const res = await callFinalize(fakeToken, fakePhotoId)
+    expect(res.status).toBe(404)
+  })
+
+  test('finalize returns 410 when link is revoked', async () => {
+    const { event } = await seedEvent()
+    const jpg = readFileSync(join(FIX, 'plain.jpg'))
+    const { token, linkId } = await mintShareLink(event.id, {
+      expiresAt: new Date(Date.now() + 86400 * 1000),
+    })
+
+    // Init a photo so a photoId exists, but do NOT finalize yet
+    const initRes = await callInit(token, { filename: 'x.jpg', mimeType: 'image/jpeg', sizeBytes: jpg.length })
+    expect(initRes.status).toBe(200)
+    const { photoId } = await initRes.json()
+
+    await revokeShareLink(linkId)
+
+    const res = await callFinalize(token, photoId)
+    expect(res.status).toBe(410)
+  })
+
+  test('finalize returns 410 when link is expired', async () => {
+    const { event } = await seedEvent()
+    const jpg = readFileSync(join(FIX, 'plain.jpg'))
+    const { token } = await mintShareLink(event.id, {
+      expiresAt: new Date(Date.now() + 86400 * 1000),
+    })
+
+    // Init a photo while the link is still valid
+    const initRes = await callInit(token, { filename: 'x.jpg', mimeType: 'image/jpeg', sizeBytes: jpg.length })
+    expect(initRes.status).toBe(200)
+    const { photoId } = await initRes.json()
+
+    // Backdate expires_at so the link is now expired
+    await db
+      .update(shareLinks)
+      .set({ expiresAt: new Date(Date.now() - 1000) })
+      .where(eq(shareLinks.eventId, event.id))
+
+    const res = await callFinalize(token, photoId)
+    expect(res.status).toBe(410)
+  })
+
+  test('finalize returns 404 for tampered (well-formed but never-minted) token', async () => {
+    // Mint a valid link and init a real photo, but call finalize with a
+    // DIFFERENT 64-hex token that was never inserted into share_links.
+    // Because the implementation uses SHA-256(token) hash lookup (not HMAC
+    // verification), any token whose hash matches no row — including a tampered
+    // one — is indistinguishable from a never-minted token. Both collapse to
+    // ShareLinkError('invalid') → 404.
+    const { event } = await seedEvent()
+    const jpg = readFileSync(join(FIX, 'plain.jpg'))
+    const { token } = await mintShareLink(event.id, {
+      expiresAt: new Date(Date.now() + 86400 * 1000),
+    })
+
+    const initRes = await callInit(token, { filename: 'x.jpg', mimeType: 'image/jpeg', sizeBytes: jpg.length })
+    expect(initRes.status).toBe(200)
+    const { photoId } = await initRes.json()
+
+    // A different well-formed 64-hex token — simulates an attacker flipping a byte
+    const tamperedToken = 'cafebabecafebabecafebabecafebabecafebabecafebabecafebabecafebabe'
+    const res = await callFinalize(tamperedToken, photoId)
+    expect(res.status).toBe(404)
   })
 
   test('contributor photos row never has both uploaderToken and uploaderUserId set', async () => {
