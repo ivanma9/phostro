@@ -1,5 +1,7 @@
 # Photo Courier — Phase 5: Gallery + Download
 
+> **⚠ Deferred — host-broadcast product line.** Active development is on **Pocket v0 / v1** (receiver-pooled product). See `docs/plans/2026-05-02-pocket-v0-implementation.md`. This phase plan is preserved for **Pocket Platform v2** — the original host-broadcast model — which is on hold pending Pocket v0 self-use results. Do not execute tasks here without re-confirming the product direction. Salvageable subsets for Pocket v1 are noted at the end of this document.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to implement this plan task-by-task.
 
 **Date:** 2026-04-27
@@ -444,3 +446,16 @@ Before declaring Phase 5 complete and moving to Phase 6:
 7. **Sign off.** Append a one-line note to this file: "Phase 5 sign-off: <name> <date>, BULK_SAVE_ZIP_THRESHOLD=<N>, matched-photos source=<phase-4-helper|inline-join>." Then begin writing Phase 6.
 
 If any review item fails, do not proceed to Phase 6. Fix in Phase 5 and re-run the checkpoint.
+
+---
+
+## Salvageable for Pocket v1
+
+If Pocket v0 self-use succeeds and v1 begins, these pieces of Phase 5 may be worth lifting (scoped per-pocket, not three-tab):
+
+- **Bulk save flow** (anchor-loop with iOS PWA dialog-fatigue threshold, ZIP fallback above N photos). Directly applicable to "save all my matches from this pocket" UX.
+- **Diff-download tracking** (`photo_saves` table or simpler per-user/per-photo flag) so re-opening a pocket only offers new photos for save.
+- **Pagination/virtualization** at >200 photos — Pocket scale could hit this with active group chats.
+- **Authorization helper hardening** (`canUserSeePhoto`) — Pocket v0 currently leans on share-link tokens; v1 should harden the owner-side fetch path.
+
+The three-tab gallery (You / By Me / Other), `photo_views`, and Phase 4 matching contract are NOT salvageable — Pocket has anonymous contributors and a single owner-facing feed.

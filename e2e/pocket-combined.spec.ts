@@ -13,7 +13,7 @@
  * (a non-production debug endpoint, NODE_ENV gated). This keeps the spec self-contained —
  * no external worker daemon lifecycle needed. CI still runs uvicorn for the /detect HTTP call.
  *
- * Polling strategy: deterministic poll of GET /api/events/[id]/you on a 500ms interval
+ * Polling strategy: deterministic poll of GET /api/pockets/[id]/you on a 500ms interval
  * with a 30s hard cap. Never uses waitForTimeout. See e2e/helpers/wait-for-you-feed.ts.
  */
 
@@ -30,6 +30,7 @@ test(
     const workerOk = await isWorkerHealthy()
     test.skip(!workerOk, 'Worker not reachable — skipping pocket-combined spec')
     test.skip(!hasR2Config(), 'R2 not configured — skipping pocket-combined spec')
+    test.setTimeout(120_000) // enrollment + R2 upload + face detection + You feed poll
 
     // ── 1. Sign in as host ────────────────────────────────────────────────────
     const loginRes = await page.request.post('/api/test-login', {
@@ -42,10 +43,10 @@ test(
     await expect(page.getByRole('heading', { name: /new pocket/i })).toBeVisible()
 
     await page.getByPlaceholder('Pocket name').fill('E2E Combined Pocket')
-    await page.getByRole('button', { name: /next/i }).click()
+    await page.getByRole('button', { name: 'Next', exact: true }).click()
 
-    await expect(page.getByText(/take a quick selfie/i)).toBeVisible()
-    await page.locator('input[type="file"]').setInputFiles(join(fixtureDir, 'plain.jpg'))
+    await expect(page.getByText(/take.*selfie/i)).toBeVisible()
+    await page.locator('input[type="file"]').setInputFiles(join(fixtureDir, 'selfie.jpg'))
     await expect(page.getByText(/looks great/i)).toBeVisible({ timeout: 30_000 })
 
     // ── 3. Create pocket via API (skip the UI click — we already have the session) ──
@@ -64,6 +65,11 @@ test(
     const pocketId = page.url().split('/pockets/')[1]
     expect(pocketId).toBeTruthy()
 
+    // ── 4a. Drain stale photo_jobs from prior runs so process-one-job reliably
+    //         reaches this test's job (queue is FIFO; old queued jobs would be
+    //         claimed first, exhausting the 5-attempt retry budget).
+    await page.request.post('/api/internal/clear-photo-jobs')
+
     // ── 4. Contributor uploads 1 photo in a fresh context ─────────────────────
     const contributorContext = await browser.newContext()
     const contributorPage = await contributorContext.newPage()
@@ -75,7 +81,9 @@ test(
       const fileChooserPromise = contributorPage.waitForEvent('filechooser')
       await contributorPage.getByRole('button', { name: /add photos/i }).click()
       const chooser = await fileChooserPromise
-      await chooser.setFiles(join(fixtureDir, 'with-gps.jpg'))
+      // selfie.jpg contains the host's face — ensures process-one-job produces a
+      // face_detections row that matches the host's enrollment embedding (distance ~0).
+      await chooser.setFiles(join(fixtureDir, 'selfie.jpg'))
 
       await expect(contributorPage.getByText(/added 1 photo/i)).toBeVisible({ timeout: 60_000 })
     } finally {
@@ -106,7 +114,7 @@ test(
     await waitForYouFeedPhotos(page.request, pocketId, 1)
 
     // ── 7. Assert the feed has photos via API ─────────────────────────────────
-    const feedRes = await page.request.get(`/api/events/${pocketId}/you`)
+    const feedRes = await page.request.get(`/api/pockets/${pocketId}/you`)
     expect(feedRes.ok()).toBeTruthy()
     const { photos } = (await feedRes.json()) as {
       photos: Array<{ photoId: string; previewUrl: string; distance: number }>

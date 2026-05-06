@@ -1,5 +1,7 @@
 # Photo Courier — Phase 6 Implementation Plan
 
+> **⚠ Deferred — host-broadcast product line.** Active development is on **Pocket v0 / v1** (receiver-pooled product). See `docs/plans/2026-05-02-pocket-v0-implementation.md`. This phase plan is preserved for **Pocket Platform v2** — the original host-broadcast model — which is on hold pending Pocket v0 self-use results. Do not execute tasks here without re-confirming the product direction. Salvageable subsets for Pocket v1 are noted at the end of this document.
+
 **Date:** 2026-04-27
 **Status:** Draft, expanded from outline in `2026-04-27-photo-courier-implementation.md`
 
@@ -524,3 +526,20 @@ Before declaring Phase 6 complete and inviting public users beyond beta:
 8. **Self-serve deletion** has been performed by at least one non-engineer beta tester and verified to complete with no orphans.
 
 If any of the above is red, do not move to general availability — fix and re-verify.
+
+---
+
+## Salvageable for Pocket v1
+
+Most of Phase 6 transfers cleanly to Pocket v1 — these concerns are product-shape-independent:
+
+- **Resend notifications** — owner pinged when a new match lands in their pocket. Quiet hours, dedupe, and preferences scheduler all apply.
+- **Expiry cron + cleanup verification** — Pocket retention policy still TBD, but the delete-then-verify pattern is the right shape. Cleanup verification is non-negotiable for the privacy promise.
+- **Illinois BIPA geofence + rollback plan** — biometric collection happens in both products; the legal posture is identical.
+- **Self-serve deletion** (`/api/me/face-profile`, `/api/account/delete`) and `deletion_requests` audit table — Pocket v0 has no deletion path; v1 needs this.
+- **Beta launch checklist** — Sentry, uptime, log retention, on-call doc, status/incidents — all still required.
+
+Adjust before lifting:
+- `notification_deliveries.kind` enum drops `host_event_summary` and `post_event_replan`; replace with `pocket_match_arrived`, `pocket_expiring`.
+- The `first_match` trigger reads Pocket v0's filter result rather than `user_event_matches.band='match'`.
+- `consent_acceptances.document` enum can drop event-specific values once the host-broadcast paths are deleted.

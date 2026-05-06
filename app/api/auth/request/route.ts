@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { after, NextResponse } from 'next/server'
 import { db } from '@/db'
 import { magicLinkTokens } from '@/db/schema'
 import { safeNext } from '@/lib/auth/redirect'
@@ -42,7 +42,16 @@ export async function POST(req: Request) {
 
   const link = `${process.env.APP_URL}/api/auth/verify?token=${token}&contact=${encodeURIComponent(lowered)}`
   if (process.env.NODE_ENV !== 'test' && process.env.RESEND_API_KEY) {
-    await sendMagicLinkEmail({ to: lowered, link })
+    // Send after the response so we don't block on Resend (3-4s) and don't leak
+    // deliverability via 500s. after() extends the serverless invocation via
+    // waitUntil so the send isn't terminated when the response is returned.
+    after(async () => {
+      try {
+        await sendMagicLinkEmail({ to: lowered, link })
+      } catch (err) {
+        console.error('sendMagicLinkEmail failed', { contact: lowered, err })
+      }
+    })
   }
   return NextResponse.json({ ok: true })
 }

@@ -14,7 +14,7 @@ export default async function PocketPage({ params }: { params: Promise<{ id: str
   const { id } = await params
 
   const user = await getCurrentUser()
-  if (!user) redirect('/auth/signin')
+  if (!user) redirect(`/auth/signin?next=/pockets/${id}`)
 
   const [event] = await db.select().from(events).where(eq(events.id, id))
   if (!event) notFound()

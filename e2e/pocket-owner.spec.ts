@@ -40,14 +40,14 @@ test('host creates a pocket: name → selfie → share link → open pocket', as
 
   // 3. Fill pocket name and click Next
   await page.getByPlaceholder('Pocket name').fill('E2E Graduation Party')
-  await page.getByRole('button', { name: /next/i }).click()
+  await page.getByRole('button', { name: 'Next', exact: true }).click()
 
   // 4. Upload selfie via file picker (triggered by the hidden file input)
   // The selfie phase renders an <input type="file"> — no button labeled "Choose selfie"
   // but the input is rendered with the instructional text visible. Set files directly.
-  await expect(page.getByText(/take a quick selfie/i)).toBeVisible()
+  await expect(page.getByText(/take.*selfie/i)).toBeVisible()
   const fileInput = page.locator('input[type="file"]')
-  await fileInput.setInputFiles(join(fixtureDir, 'plain.jpg'))
+  await fileInput.setInputFiles(join(fixtureDir, 'selfie.jpg'))
 
   // 5. Wait for enrollment success — "Looks great!" quality confirmation appears
   await expect(page.getByText(/looks great/i)).toBeVisible({ timeout: 30_000 })

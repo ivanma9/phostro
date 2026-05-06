@@ -69,3 +69,5 @@ worker/models/*.onnx
 bench/.lfw-cache/
 bench/fixtures/wedding-face-crops/_extract/
 bench/.lfw-extract/
+.gstack/
+.pnpm-store/

@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm'
 import { beforeEach, expect, test, vi } from 'vitest'
-import { GET } from '@/app/api/events/[id]/you/route'
+import { GET } from '@/app/api/pockets/[id]/you/route'
 import { db } from '@/db'
 import { eventMembers, events, faceDetections, photos, users } from '@/db/schema'
 import * as currentUser from '@/lib/auth/current-user'
@@ -94,7 +94,7 @@ async function seedDetection(photoId: string, embedding: number[]) {
 }
 
 function makeReq(id: string) {
-  return new Request(`http://t/api/events/${id}/you`)
+  return new Request(`http://t/api/pockets/${id}/you`)
 }
 
 function makeParams(id: string) {

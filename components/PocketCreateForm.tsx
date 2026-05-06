@@ -108,7 +108,7 @@ export function PocketCreateForm() {
     return (
       <div className="space-y-3">
         <p className="text-sm text-gray-600">
-          Take a quick selfie so we can find your face in photos.
+          Take or upload a clear selfie so we can find your face in photos.
         </p>
         <input
           ref={fileRef}

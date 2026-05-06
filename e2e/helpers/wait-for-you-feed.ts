@@ -1,7 +1,7 @@
 import type { APIRequestContext } from '@playwright/test'
 
 /**
- * Polls GET /api/events/[eventId]/you every 500ms until `photos.length >= expectedMinCount`
+ * Polls GET /api/pockets/[pocketId]/you every 500ms until `photos.length >= expectedMinCount`
  * or the hard cap of `timeoutMs` (default 30s) is hit.
  *
  * Transient non-ok responses are retried silently. The function throws with a
@@ -20,7 +20,7 @@ export async function waitForYouFeedPhotos(
   let lastCount = -1
 
   while (Date.now() - started < timeoutMs) {
-    const res = await request.get(`/api/events/${eventId}/you`)
+    const res = await request.get(`/api/pockets/${eventId}/you`)
     if (!res.ok()) {
       // Transient error (e.g. 503 while server warms up) — retry
       await new Promise((r) => setTimeout(r, 500))
