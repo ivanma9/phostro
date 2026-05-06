@@ -1,5 +1,5 @@
 // Integration tests for share-link token helpers.
-// Placed in tests/ (root) alongside other DB-backed tests (e.g. events/join.test.ts)
+// Placed in tests/ (root) alongside other DB-backed tests (e.g. api/contributor-upload.test.ts)
 // rather than tests/integration/ because vitest.config.ts globs tests/**/*.test.ts —
 // there is no separate integration/ subdirectory convention in this repo.
 

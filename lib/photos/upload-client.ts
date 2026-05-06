@@ -2,18 +2,14 @@ export type UploadProgress = { done: number; total: number; failed: number }
 
 type UploadResult = { ok: true; photoId: string } | { ok: false; reason: string }
 
-export type UploadTarget = { kind: 'event'; eventId: string } | { kind: 'token'; token: string }
+export type UploadTarget = { kind: 'token'; token: string }
 
 function initUrl(target: UploadTarget): string {
-  return target.kind === 'event'
-    ? `/api/events/${target.eventId}/photos/init`
-    : `/api/p/${target.token}/init`
+  return `/api/p/${target.token}/init`
 }
 
 function finalizeUrl(target: UploadTarget, photoId: string): string {
-  return target.kind === 'event'
-    ? `/api/events/${target.eventId}/photos/${photoId}/finalize`
-    : `/api/p/${target.token}/finalize/${photoId}`
+  return `/api/p/${target.token}/finalize/${photoId}`
 }
 
 export async function uploadOne(target: UploadTarget, file: File): Promise<UploadResult> {
