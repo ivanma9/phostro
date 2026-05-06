@@ -15,8 +15,12 @@ beforeEach(async () => {
   vi.restoreAllMocks()
 })
 
-async function asUser(name = 'Owner', contact = 'owner@x.com') {
-  const [u] = await db.insert(users).values({ name, contact, contactType: 'email' }).returning()
+async function asUser(name = 'Owner', contact = 'owner@x.com', enrolled = true) {
+  const faceEmbedding = enrolled ? Array.from({ length: 128 }, (_, i) => i / 128) : null
+  const [u] = await db
+    .insert(users)
+    .values({ name, contact, contactType: 'email', faceEmbedding })
+    .returning()
   vi.spyOn(currentUser, 'getCurrentUser').mockResolvedValue(u)
   return u
 }
@@ -34,6 +38,15 @@ test('returns 401 when not authenticated', async () => {
   vi.spyOn(currentUser, 'getCurrentUser').mockResolvedValue(null)
   const res = await POST(makeReq({ name: 'My Pocket' }))
   expect(res.status).toBe(401)
+})
+
+// Case 2a: 412 when caller has no enrolled face — pocket page is unusable without it
+test('returns 412 when user is not enrolled', async () => {
+  await asUser('NoFace', 'noface@x.com', false)
+  const res = await POST(makeReq({ name: 'My Pocket' }))
+  expect(res.status).toBe(412)
+  const body = await res.json()
+  expect(body).toEqual({ error: 'not_enrolled' })
 })
 
 // Case 2: 400 invalid name

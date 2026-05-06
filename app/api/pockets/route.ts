@@ -11,6 +11,12 @@ export async function POST(req: Request) {
   const user = await getCurrentUser()
   if (!user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
 
+  // The pocket page (You feed) is unusable without an enrolled face — surface the
+  // mismatch up front instead of letting the user create a dead-end pocket.
+  if (!user.faceEmbedding) {
+    return NextResponse.json({ error: 'not_enrolled' }, { status: 412 })
+  }
+
   // 2. Validate name
   const body = (await req.json()) as { name?: unknown }
   const name = typeof body.name === 'string' ? body.name.trim() : ''

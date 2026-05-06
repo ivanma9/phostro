@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm'
+import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { MintShareLink } from '@/components/MintShareLink'
 import { db } from '@/db'
@@ -54,9 +55,12 @@ export default async function PocketPage({ params }: { params: Promise<{ id: str
         </h2>
 
         {!enrolled ? (
-          <p className="text-sm text-gray-500">
-            Your enrollment selfie is missing. This shouldn&apos;t happen in v0 — contact support.
-          </p>
+          <div className="space-y-2">
+            <p className="text-sm text-gray-500">Take a selfie to enable photo matching.</p>
+            <Link href="/pockets/new" className="inline-block rounded border px-3 py-2 text-sm">
+              Add your selfie
+            </Link>
+          </div>
         ) : feedPhotos.length === 0 ? (
           <p className="text-sm text-gray-500">
             No photos yet. Share your link to start receiving photos.

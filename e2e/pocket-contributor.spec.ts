@@ -25,7 +25,11 @@ test('contributor visits share link and uploads 3 photos', async ({ page, browse
   // ── Setup: create a pocket as host ──────────────────────────────────────────
   // Sign in as host using the host's page context (so cookies are set there)
   const loginRes = await page.request.post('/api/test-login', {
-    data: { contact: 'pocket-contributor-host+e2e@example.com', name: 'E2E Contributor Host' },
+    data: {
+      contact: 'pocket-contributor-host+e2e@example.com',
+      name: 'E2E Contributor Host',
+      enrollFakeFace: true,
+    },
   })
   expect(loginRes.ok(), `test-login failed: ${loginRes.status()}`).toBeTruthy()
 

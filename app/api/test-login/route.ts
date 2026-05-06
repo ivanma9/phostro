@@ -12,6 +12,7 @@ export async function POST(req: Request) {
   const body = (await req.json()) as {
     contact?: unknown
     name?: unknown
+    enrollFakeFace?: unknown
   }
 
   const contact = typeof body.contact === 'string' ? body.contact.toLowerCase() : null
@@ -20,10 +21,23 @@ export async function POST(req: Request) {
   }
 
   const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim() : contact
+  const enrollFakeFace = body.enrollFakeFace === true
 
   let [user] = await db.select().from(users).where(eq(users.contact, contact))
   if (!user) {
-    ;[user] = await db.insert(users).values({ name, contact, contactType: 'email' }).returning()
+    const faceEmbedding = enrollFakeFace
+      ? Array.from({ length: 128 }, (_, i) => i / 128)
+      : undefined
+    ;[user] = await db
+      .insert(users)
+      .values({ name, contact, contactType: 'email', faceEmbedding })
+      .returning()
+  } else if (enrollFakeFace && !user.faceEmbedding) {
+    ;[user] = await db
+      .update(users)
+      .set({ faceEmbedding: Array.from({ length: 128 }, (_, i) => i / 128) })
+      .where(eq(users.id, user.id))
+      .returning()
   }
 
   const session = await getSession()
