@@ -39,17 +39,49 @@ export function PocketCreateForm() {
     const { name } = phase
     setPhase({ kind: 'enrolling', name })
 
-    const form = new FormData()
-    form.append('file', file)
-
     try {
-      const res = await fetch('/api/me/face', { method: 'POST', body: form })
-      if (res.ok) {
-        const { quality } = (await res.json()) as { quality: number }
+      // Step A: ask server for a presigned R2 PUT URL.
+      // Bypasses Vercel's 4.5 MB request body cap — full-res phone selfies are routinely
+      // larger than that, and a multipart POST through the function fails as 413 / network error.
+      const initRes = await fetch('/api/me/face/init', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mimeType: file.type, sizeBytes: file.size }),
+      })
+      if (!initRes.ok) {
+        const { error } = (await initRes.json().catch(() => ({}))) as { error?: string }
+        const message =
+          (error && RETAKE_MESSAGES[error]) ?? 'Something went wrong — please try again.'
+        if (fileRef.current) fileRef.current.value = ''
+        setPhase({ kind: 'error', message })
+        return
+      }
+      const { key, putUrl } = (await initRes.json()) as { key: string; putUrl: string }
+
+      // Step B: PUT the file straight to R2.
+      const putRes = await fetch(putUrl, {
+        method: 'PUT',
+        headers: { 'content-type': file.type },
+        body: file,
+      })
+      if (!putRes.ok) {
+        if (fileRef.current) fileRef.current.value = ''
+        setPhase({ kind: 'error', message: 'Upload failed — please try again.' })
+        return
+      }
+
+      // Step C: tell the server to process the uploaded key.
+      const finRes = await fetch('/api/me/face/finalize', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ key }),
+      })
+      if (finRes.ok) {
+        const { quality } = (await finRes.json()) as { quality: number }
         setPhase({ kind: 'enrolled', name, quality })
         return
       }
-      const { error } = (await res.json()) as { error?: string }
+      const { error } = (await finRes.json().catch(() => ({}))) as { error?: string }
       const message =
         (error && RETAKE_MESSAGES[error]) ?? 'Something went wrong — please try again.'
       if (fileRef.current) fileRef.current.value = ''
