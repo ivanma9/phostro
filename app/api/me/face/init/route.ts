@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth/current-user'
+import { MAX_UPLOAD_BYTES } from '@/lib/photos/keys'
 import { createPresignedPutUrl } from '@/lib/photos/r2'
 
 // Two-step enrollment to bypass Vercel's 4.5MB request body cap:
@@ -10,10 +11,6 @@ import { createPresignedPutUrl } from '@/lib/photos/r2'
 export const runtime = 'nodejs'
 
 const ALLOWED_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'])
-
-// Selfie upload cap. Larger than the in-function 10 MB because direct-to-R2
-// has no Vercel body limit; raised to 25 MB to comfortably fit any phone selfie.
-const MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
 const PUT_URL_TTL_SECONDS = 5 * 60
 

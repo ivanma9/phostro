@@ -4,8 +4,9 @@ import { NextResponse } from 'next/server'
 import { db } from '@/db'
 import { users } from '@/db/schema'
 import { getCurrentUser } from '@/lib/auth/current-user'
+import { MAX_UPLOAD_BYTES } from '@/lib/photos/keys'
 import { ImageProcessError, processImage } from '@/lib/photos/process'
-import { deleteObject, getObjectBuffer, putObject } from '@/lib/photos/r2'
+import { deleteObject, getObjectBuffer, headObject, putObject } from '@/lib/photos/r2'
 import { detectPhoto } from '@/lib/worker/client'
 
 // Companion to /api/me/face/init. Client posts the R2 key it uploaded to;
@@ -31,6 +32,19 @@ export async function POST(req: Request): Promise<Response> {
   const expectedPrefix = `enrollment-pending/${user.id}/`
   if (!key.startsWith(expectedPrefix)) {
     return NextResponse.json({ error: 'invalid_key' }, { status: 400 })
+  }
+
+  // Verify the uploaded object actually exists and is within size limits.
+  // Init validates the *claimed* sizeBytes from the JSON body, but a presigned
+  // PUT URL does not enforce object size — a malicious or buggy client can PUT
+  // gigabytes. Head the object before pulling it into a Buffer to bound memory.
+  const head = await headObject(key)
+  if (!head) {
+    return NextResponse.json({ error: 'upload_not_found' }, { status: 404 })
+  }
+  if (head.contentLength > MAX_UPLOAD_BYTES) {
+    await deleteObject(key).catch(() => {})
+    return NextResponse.json({ error: 'too_large' }, { status: 413 })
   }
 
   let rawBuf: Buffer

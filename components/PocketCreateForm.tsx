@@ -15,6 +15,13 @@ type Phase =
 const RETAKE_MESSAGES: Record<string, string> = {
   multiple_faces: 'Please retake without others in frame.',
   no_face: "We couldn't see your face — try better lighting.",
+  too_large: 'Photo is too large (max 25 MB). Please choose a smaller one.',
+  invalid_file: "We couldn't read that photo. Please use a JPEG, PNG, or HEIC.",
+  invalid_size: 'Please choose a photo file.',
+  upload_not_found: "Upload didn't make it through — please try again.",
+  worker_unavailable:
+    'Our face check service is briefly unavailable. Please try again in a moment.',
+  unauthenticated: 'Your session expired — please sign in again.',
 }
 
 export function PocketCreateForm() {
