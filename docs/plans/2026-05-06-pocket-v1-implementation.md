@@ -48,8 +48,14 @@ v1 is done when **all** of the following hold and are verifiable by automated te
 6. **Sentry receives a synthetic error from prod within 60s.** Both Next.js app and Python worker are wired.
 7. **Cleanup verification is green.** Expired pockets have zero rows across `photos`, `photo_jobs`, `face_detections`, `face_clusters`, `share_links`, and zero R2 objects under the event prefix; failure injection produces an alert.
 8. **BIPA geofence blocks Illinois at signup and enrollment**, behind `GEOFENCE_IL_ENABLED` flag with a <5-minute rollback documented.
+9. **Contributor attribution renders.** Optional `contributor_display_name` input on `/p/[token]`, displayed under each tile on the owner pocket page. Verified by Playwright spec uploading one named + one anonymous contribution.
+10. **First-match notification fires once and only once per (user, pocket).** Triggered after enrollment writes match rows from existing pocket photos; integration test confirms second enrollment doesn't re-fire (dedupe).
+11. **Resend custom domain verified.** `mail.phostro.com` SPF / DKIM / DMARC pass; test send to a real Gmail / iCloud / Outlook inbox lands in the inbox (not spam) with valid DKIM signature.
+12. **Contributor init is rate-limited.** `/api/p/[token]/init` returns 429 with `Retry-After` after 30 calls per 15 minutes per `(share_link_id, IP)`. Integration test floods 31 calls and asserts the 31st is 429.
+13. **Security headers present on every response.** CSP, HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy. Mozilla Observatory grade ≥ B.
+14. **Owner can revoke a leaked share link.** `DELETE /api/pockets/:id/share-links/:linkId` sets `revoked_at`; subsequent contributor `init` with that token returns 410. UI exposes this in `app/(app)/pockets/[id]/share-links/page.tsx`.
 
-Not on the list (intentional): notifications beyond first-match; "maybe you" tier; cross-pocket linking; multi-owner; host-broadcast.
+Not on the list (intentional): notifications beyond first-match; "maybe you" tier; cross-pocket linking; multi-owner; host-broadcast; full preferences/quiet-hours UI.
 
 ---
 
@@ -72,11 +78,11 @@ Not on the list (intentional): notifications beyond first-match; "maybe you" tie
 
 ## Open questions
 
-1. **Does the v0 postmortem demand attribution UI now or never?** *Default: yes — surface `contributor_display_name` capture as an optional contributor-page input. If postmortem says contributors didn't care, drop the task.* `[depends on v0 self-use postmortem]`
-2. **Does first-match email belong in v1 or v2?** *Default: v1, scoped to first-match-only as a Resend pipeline smoke test. Postmortem may show the founder doesn't even check email for this — if so, defer the whole notifications path to v2 and keep v1 strictly to the privacy/legal floor.* `[depends on v0 self-use postmortem]`
+1. ~~**Does the v0 postmortem demand attribution UI?**~~ **Resolved 2026-05-06: ship in v1.** Schema already has `contributor_display_name` (nullable), the contributor input is one optional text field, the owner-side render is a small caption under each tile. Cost ≈ 0.5 dev day; signal-to-noise is too good to defer. Task 5 is mandatory, not conditional on the v0 postmortem.
+2. ~~**Does first-match email belong in v1 or v2?**~~ **Resolved 2026-05-06: ship in v1, scoped tight.** Without it, a contributor uploads → recognition matches → owner has no idea unless they reopen the app. Production-ready means users get notified when something happens to them. Single kind only (`first_match`), one dedupe row, no preferences table, no quiet-hours scheduler — those are v2. Task 12 is mandatory. Depends on Question 5's domain provisioning.
 3. ~~**Pocket auto-expiry policy.**~~ **Resolved 2026-05-06: 7-day default**, matching the existing `events.lifespan_days` default and the original design doc. v1 wires the cron against this; manual extension button stays out of scope. The schema column is already `notNull().default(7)`, so no migration needed — Task 6 just has to enable the cron and confirm the default isn't being overridden anywhere.
 4. ~~**ZIP generation location.**~~ **Resolved 2026-05-06: Next.js streaming route via `archiver`, ZIPs `r2_key_preview` only (all JPEG), `zlib: { level: 0 }` store-only, 500-photo hard cap returning 413 above it, parallel R2 GETs (concurrency ~8), no recompression.** Worker path rejected — would compete with detection inference for CPU on a CPU-only worker, requires a new job kind, async UX with polling, and adds R2 upload + presigned URL round-trip. Vercel's 4.5MB response-body cap does not apply to streaming responses (confirmed in Vercel's KB). For 500 photos at ≤600KB previews, wall time is ~60-120s and memory is bounded by archiver's one-entry-at-a-time pipeline — well inside the 300s hobby duration. Originals/HEIC handling deferred to v2 if v1 postmortem surfaces it.
-5. **Resend sending domain.** New subdomain, or reuse whatever Phase 1 used for magic-link auth? *Default: reuse Phase 1's `lib/email.ts` Resend setup; don't re-provision DNS for v1.*
+5. ~~**Resend sending domain.**~~ **Resolved 2026-05-06: provision a verified custom subdomain (`mail.phostro.com`) before opening v1 to non-founder beta.** Phase 1 currently hardcodes `Photo Courier <onboarding@resend.dev>` (Resend's sandbox sender) — see `lib/email.ts:14`. That sender works for dev, but on a non-founder beta inbox it (a) looks unverified, (b) is more likely to land in spam, (c) shares reputation with every other Resend free-tier project. Add SPF, DKIM, DMARC records to `mail.phostro.com`, verify in Resend dashboard, update `lib/email.ts` to read `RESEND_FROM_ADDRESS=Photo Courier <noreply@mail.phostro.com>` from env. This is now part of Task 14 (production-readiness). Reuse the existing Resend API key — no new account.
 
 ---
 
@@ -169,11 +175,35 @@ Not on the list (intentional): notifications beyond first-match; "maybe you" tie
 
 **Files:** `docs/postmortems/pocket-v1-self-use.md`, `docs/postmortems/pocket-v1-beta.md`. Founder uses v1 themselves first (smoke). Then invites 1–3 non-founder beta users — at least one on iOS in-app browser flow, at least one with HEIC photos > 50MB, at least one outside the founder's Mac/Chrome dev environment. Postmortem captures: contributor count, photos retrieved, friction list, did they bounce. Verdict: ready for wider beta? defer to v2? give up?
 
+### Task 14 — Production-readiness gaps (added 2026-05-06)
+
+A pre-Task-13 production hardening pass for items the audit flagged that weren't already covered by Tasks 0–12. Each sub-item has a concrete file list and verification.
+
+**14a. Rate limit `/api/p/[token]/init` (resolves the existing `// TODO: per-IP rate limit (Pocket v1)` at line 18).**
+Files: `lib/rate-limit/token-init.ts` (new), modify `app/api/p/[token]/init/route.ts`, `tests/api/p-init-rate-limit.test.ts`. Use a lightweight Postgres-backed token bucket keyed on `(share_link_id, request_ip)`: 30 inits per 15 minutes per IP per link. Above limit: 429 with `Retry-After`. Verification: integration test floods 31 calls, asserts the 31st is 429; Sentry breadcrumb fires.
+
+**14b. Resend custom domain provisioning.**
+Files: modify `lib/email.ts` (read `RESEND_FROM_ADDRESS` env), `.env.example`, `docs/ops/email-domain.md` (new). Provision `mail.phostro.com` in Resend, add SPF / DKIM / DMARC DNS records, wait for verification, set `RESEND_FROM_ADDRESS=Photo Courier <noreply@mail.phostro.com>` in Vercel prod env. Operational doc records rotation cadence and how to nuke a leaked key. **Blocks Task 12** (first-match notification needs a verified sender). Verification: end-to-end send to a real Gmail / iCloud / Outlook inbox shows verified DKIM and lands in inbox, not spam.
+
+**14c. Security headers via Next.js middleware.**
+Files: `middleware.ts` (new), `tests/security-headers.test.ts`. Default deny: `Content-Security-Policy` (allow only self + R2 image origin + Resend tracking), `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=()`. CSP must NOT block the contributor `/p/[token]` flow's R2 PUT (allow R2 endpoint in `connect-src`). Verification: `mozilla.observatory` scan grade ≥ B; Playwright spec asserts headers on `/`, `/p/[token]`, `/api/me`.
+
+**14d. Share-link revocation UI.**
+Files: `app/(app)/pockets/[id]/share-links/page.tsx` (new — server component listing the owner's active links), modify `app/api/pockets/[id]/share-links/route.ts` (add `DELETE /:linkId`), `components/RevokeShareLinkButton.tsx`, `tests/api/share-links-revoke.test.ts`. Owner sees a list of active links with usage count, expiry, and a revoke button. Revoke sets `share_links.revoked_at = now()`. The contributor page already returns 410 for revoked tokens (Pocket v0 ships this); revocation makes it actionable. Verification: integration test revokes, then asserts contributor `init` returns 410.
+
+**14e. Worker dispatcher Sentry breadcrumbs (resolves Phase 3 `// TODO: add Sentry breadcrumbs (Task 16)` at `lib/worker/dispatcher.ts:8`).**
+Subsumed by Task 11 (Sentry wiring) — verify the dispatcher emits `worker.dispatch.success` / `.retry` / `.dead_letter` breadcrumbs end-to-end before closing Task 11.
+
+**14f. R2 lifecycle policy for orphan upload pendingKeys.**
+Files: `docs/ops/r2-lifecycle.md` (new), Cloudflare dashboard config. Init creates a `pendingKey` with a 15-minute TTL in DB but the R2 object can persist if finalize never runs. Set bucket lifecycle rule: delete objects under `pending/` prefix older than 24h. Verification: run a one-off `aws s3 ls` post-rollout to confirm `pending/` doesn't accumulate.
+
+Verification of Task 14 as a whole: a `docs/launch/production-readiness-checklist.md` checks off all six sub-items before Task 13's beta invites go out.
+
 ---
 
 ## Estimated effort
 
-Task 0 (cleanup): 0.5d, mechanical. Tasks 1–2 (in-app browser, HEIC): 1.5d combined — both touch the contributor page and need real device testing. Tasks 3–4 (saves + bulk save): 2d — bulk save is the heaviest UX task, plus device-test cycle. Tasks 6–7 (expiry + verification): 1.5d, mostly lifting from Phase 6. Task 8 (geofence): 1d, plus a counsel-review wait that's wall-clock, not work-time. Task 9 (consent): 0.5d. Task 10 (deletion): 1d. Task 11 (Sentry/uptime/on-call): 1d. Task 12 (first-match): 0.5d if it ships, 0d if dropped. Task 13 (postmortem): 0.5d focused over 1–2 weeks of beta. **Total focused work: ~10 dev-days. Realistic calendar: 3–4 weeks for solo founder.** Counsel review on the privacy policy + Illinois geofence approach is the long pole if it isn't already in flight.
+Task 0 (cleanup): 0.5d, mechanical. Tasks 1–2 (in-app browser, HEIC): 1.5d combined — both touch the contributor page and need real device testing. Tasks 3–4 (saves + bulk save): 2d — bulk save is the heaviest UX task, plus device-test cycle. Task 5 (attribution): 0.5d. Tasks 6–7 (expiry + verification): 1.5d, mostly lifting from Phase 6. Task 8 (geofence): 1d, plus a counsel-review wait that's wall-clock, not work-time. Task 9 (consent): 0.5d. Task 10 (deletion): 1d. Task 11 (Sentry/uptime/on-call): 1d. Task 12 (first-match): 0.5d. Task 13 (postmortem): 0.5d focused over 1–2 weeks of beta. **Task 14 (production gaps): 1.5d** — rate limit (0.5), Resend domain (0.5 + DNS wall-clock), CSP middleware (0.25), revocation UI (0.25), R2 lifecycle (0.05). **Total focused work: ~12 dev-days. Realistic calendar: 4–5 weeks for solo founder.** Counsel review on the privacy policy + Illinois geofence approach is the long pole if it isn't already in flight; DNS verification on `mail.phostro.com` is the second-longest pole.
 
 ---
 
