@@ -83,11 +83,27 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: 'worker_unavailable' }, { status: 503 })
   }
 
+  // Compute debug info we want to surface on every response (success or failure)
+  // so the user can see what RetinaFace actually thought of their selfie.
+  const detected = detect.faces.length
+  const topConfidence =
+    detected > 0 ? Math.round(detect.faces[0].confidence * 100) : null
+
   if (detect.faces.length > 1) {
-    return NextResponse.json({ error: 'multiple_faces' }, { status: 400 })
+    return NextResponse.json(
+      { error: 'multiple_faces', detected, topConfidence },
+      { status: 400 },
+    )
   }
-  if (detect.faces.length === 0 || detect.faces[0].confidence <= 0.9) {
-    return NextResponse.json({ error: 'no_face' }, { status: 400 })
+  // Confidence threshold lowered from 0.9 → 0.6 for v0 dogfood. RetinaFace
+  // returns 0.7-0.85 for many real selfies (angle, lighting, glasses). 0.9 was
+  // a placeholder and rejected too many valid enrollments. Revisit at v1 with
+  // labeled-bench data.
+  if (detect.faces.length === 0 || detect.faces[0].confidence <= 0.6) {
+    return NextResponse.json(
+      { error: 'no_face', detected, topConfidence },
+      { status: 400 },
+    )
   }
 
   const face = detect.faces[0]

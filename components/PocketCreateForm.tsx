@@ -88,11 +88,25 @@ export function PocketCreateForm() {
         setPhase({ kind: 'enrolled', name, quality })
         return
       }
-      const { error } = (await finRes.json().catch(() => ({}))) as { error?: string }
-      const message =
-        (error && RETAKE_MESSAGES[error]) ?? 'Something went wrong — please try again.'
+      const errBody = (await finRes.json().catch(() => ({}))) as {
+        error?: string
+        detected?: number
+        topConfidence?: number | null
+      }
+      const baseMessage =
+        (errBody.error && RETAKE_MESSAGES[errBody.error]) ??
+        'Something went wrong — please try again.'
+      // Append detection diagnostics so the user sees what the model actually saw.
+      let suffix = ''
+      if (typeof errBody.detected === 'number') {
+        suffix = ` (faces detected: ${errBody.detected}`
+        if (typeof errBody.topConfidence === 'number') {
+          suffix += `, top confidence: ${errBody.topConfidence}%`
+        }
+        suffix += ')'
+      }
       if (fileRef.current) fileRef.current.value = ''
-      setPhase({ kind: 'error', message })
+      setPhase({ kind: 'error', message: baseMessage + suffix })
     } catch {
       if (fileRef.current) fileRef.current.value = ''
       setPhase({ kind: 'error', message: 'Network error — please try again.' })
