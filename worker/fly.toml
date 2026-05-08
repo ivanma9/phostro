@@ -29,6 +29,9 @@ primary_region = "iad"
 
 [[vm]]
   size = "shared-cpu-1x"
+  # Tried 512 MB — OOM-killed during ONNX load (anon-rss ~394 MB + Python
+  # overhead exceeds 512). 1 GB has comfortable headroom; cost cut comes from
+  # auto-suspend, not from shaving memory.
   memory = "1gb"
   cpu_kind = "shared"
   cpus = 1
