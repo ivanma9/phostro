@@ -1,9 +1,16 @@
-import { NextResponse } from 'next/server'
+import { randomUUID } from 'node:crypto'
+import { after, NextResponse } from 'next/server'
+import { processOneJob } from '@/lib/worker/dispatcher'
 import { finalizePhotoCore } from '@/lib/photos/finalize-core'
 import { ShareLinkError, verifyShareLink } from '@/lib/share-links/storage'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
+
+// Number of queued jobs to attempt to drain per finalize call. Each contributor
+// upload tries to process its own job + any older stragglers. Caps the in-flight
+// drain so a backed-up queue doesn't time out a single finalize handler.
+const DRAIN_BATCH = 5
 
 export async function POST(
   _req: Request,
@@ -31,5 +38,24 @@ export async function POST(
   })
 
   if (!result.ok) return NextResponse.json(result.body, { status: result.status })
+
+  // Drain the queue in the background. Without a long-running dispatcher in
+  // production, queued photo_jobs would never get picked up — face_detections
+  // never written and the You feed stays empty. after() runs after the response
+  // is sent so the contributor doesn't wait on detection. Each worker call
+  // takes ~1-3s; DRAIN_BATCH bounds it to ~15s worst case.
+  after(async () => {
+    const workerId = `inline-drain-${randomUUID()}`
+    for (let i = 0; i < DRAIN_BATCH; i++) {
+      try {
+        const job = await processOneJob(workerId)
+        if (job === null) break
+      } catch (err) {
+        console.error('inline drain failed', { err: String(err) })
+        break
+      }
+    }
+  })
+
   return NextResponse.json({ photo: result.photo })
 }
