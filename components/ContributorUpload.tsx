@@ -3,10 +3,12 @@
 import { useRef, useState } from 'react'
 import { uploadBatch } from '@/lib/photos/upload-client'
 
+type Failure = { name: string; reason: string }
+
 type Phase =
   | { kind: 'idle' }
   | { kind: 'uploading'; done: number; total: number; failed: number }
-  | { kind: 'done'; added: number; eventName: string }
+  | { kind: 'done'; added: number; failures: Failure[]; eventName: string }
 
 export function ContributorUpload({ token, eventName }: { token: string; eventName: string }) {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -26,27 +28,56 @@ export function ContributorUpload({ token, eventName }: { token: string; eventNa
     )
 
     const added = results.filter((r) => r.ok).length
-    setPhase({ kind: 'done', added, eventName })
+    const failures: Failure[] = []
+    results.forEach((r, idx) => {
+      if (!r.ok) failures.push({ name: accepted[idx]?.name ?? `photo ${idx + 1}`, reason: r.reason })
+    })
+    setPhase({ kind: 'done', added, failures, eventName })
   }
 
   if (phase.kind === 'done') {
     return (
-      <div className="text-center">
+      <div className="space-y-3 text-center">
         <p className="text-lg font-medium">
           Added {phase.added} {phase.added === 1 ? 'photo' : 'photos'} to {phase.eventName}.
         </p>
-        <p className="mt-1 text-sm text-gray-500">You can close this tab.</p>
+        {phase.failures.length > 0 && (
+          <div className="rounded-md border border-red-200 bg-red-50 p-3 text-left text-sm">
+            <p className="font-medium text-red-800">
+              {phase.failures.length} {phase.failures.length === 1 ? 'photo' : 'photos'} failed:
+            </p>
+            <ul className="mt-1 list-disc pl-5 text-red-700">
+              {phase.failures.map((f) => (
+                <li key={f.name}>
+                  <span className="font-mono text-xs">{f.name}</span> — {f.reason}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <p className="text-sm text-gray-500">You can close this tab.</p>
       </div>
     )
   }
 
   if (phase.kind === 'uploading') {
+    const pct = phase.total === 0 ? 0 : Math.round((phase.done / phase.total) * 100)
     return (
-      <div className="text-center">
+      <div className="space-y-3">
         <p className="text-sm text-gray-700">
           Uploading {phase.done} of {phase.total}…
         </p>
-        {phase.failed > 0 && <p className="mt-1 text-sm text-red-600">{phase.failed} failed.</p>}
+        <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+          <div
+            className="h-full bg-black transition-all duration-300 ease-out"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        {phase.failed > 0 && (
+          <p className="text-sm text-red-600">
+            {phase.failed} failed so far — details when finished.
+          </p>
+        )}
       </div>
     )
   }
