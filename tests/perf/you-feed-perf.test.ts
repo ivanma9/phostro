@@ -18,7 +18,7 @@ import { db } from '@/db'
 import {
   eventMembers,
   events,
-  faceDetections,
+  faceDetectionsV2,
   photos,
   userFaceEmbeddings,
   users,
@@ -101,12 +101,13 @@ beforeAll(async () => {
     const embedding = i % 2 === 0 ? unitVec(0) : unitVec(1)
     const embStr = `[${embedding.join(',')}]`
     await db.execute(sql`
-      INSERT INTO face_detections (photo_id, bbox_x1, bbox_y1, bbox_x2, bbox_y2, confidence, landmarks_json, embedding)
+      INSERT INTO face_detections_v2 (photo_id, bbox_x1, bbox_y1, bbox_x2, bbox_y2, confidence, landmarks_json, embedding, yaw)
       VALUES (
         ${insertedPhotos[i].id},
         0.1, 0.1, 0.5, 0.5, 0.9,
         '[]'::jsonb,
-        ${embStr}::vector
+        ${embStr}::vector,
+        0.0
       )
     `)
   }
@@ -114,7 +115,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   // Clean up perf test data without disturbing other test state.
-  await db.delete(faceDetections)
+  await db.delete(faceDetectionsV2)
   await db.delete(photos)
   await db.delete(userFaceEmbeddings)
   await db.delete(eventMembers)

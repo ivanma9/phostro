@@ -1,7 +1,7 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { db } from '@/db'
-import { eventMembers, events, faceDetections, photoJobs, photos, users } from '@/db/schema'
+import { eventMembers, events, faceDetectionsV2, photoJobs, photos, users } from '@/db/schema'
 
 // Mock the worker client so we don't make real HTTP calls
 vi.mock('@/lib/worker/client', () => ({
@@ -82,7 +82,7 @@ const CANNED_FACES = [
 ]
 
 beforeEach(async () => {
-  await db.delete(faceDetections)
+  await db.delete(faceDetectionsV2)
   await db.delete(photoJobs)
   await db.delete(photos)
   await db.delete(eventMembers)
@@ -120,8 +120,8 @@ test('D1: processOneJob inserts face_detections, sets has_detected_faces=true, j
   // face_detections rows
   const detections = await db
     .select()
-    .from(faceDetections)
-    .where(eq(faceDetections.photoId, p.id))
+    .from(faceDetectionsV2)
+    .where(eq(faceDetectionsV2.photoId, p.id))
 
   expect(detections).toHaveLength(1)
   expect(detections[0].bboxX1).toBeCloseTo(0.1)
@@ -157,8 +157,8 @@ test('D2: processOneJob with empty faces sets has_detected_faces=false, zero det
 
   const detections = await db
     .select()
-    .from(faceDetections)
-    .where(eq(faceDetections.photoId, p.id))
+    .from(faceDetectionsV2)
+    .where(eq(faceDetectionsV2.photoId, p.id))
   expect(detections).toHaveLength(0)
 
   const [photo] = await db.select().from(photos).where(eq(photos.id, p.id))
@@ -184,8 +184,8 @@ test('D3: processOneJob marks job failed with photo_not_ready when photo state i
   // No face_detections inserted
   const detections = await db
     .select()
-    .from(faceDetections)
-    .where(eq(faceDetections.photoId, p.id))
+    .from(faceDetectionsV2)
+    .where(eq(faceDetectionsV2.photoId, p.id))
   expect(detections).toHaveLength(0)
 
   // Job should be marked failed (or retried) with error=photo_not_ready
@@ -207,8 +207,8 @@ test('D4: processOneJob marks job failed with photo_not_ready when r2_key_previe
 
   const detections = await db
     .select()
-    .from(faceDetections)
-    .where(eq(faceDetections.photoId, p.id))
+    .from(faceDetectionsV2)
+    .where(eq(faceDetectionsV2.photoId, p.id))
   expect(detections).toHaveLength(0)
 
   const [jobAfter] = await db.select().from(photoJobs).where(eq(photoJobs.id, job.id))
@@ -271,8 +271,8 @@ test('D6: processOneJob handles race loss (markSucceeded returns null) gracefull
   // No face_detections must have been committed (transaction rolled back)
   const detections = await db
     .select()
-    .from(faceDetections)
-    .where(eq(faceDetections.photoId, p.id))
+    .from(faceDetectionsV2)
+    .where(eq(faceDetectionsV2.photoId, p.id))
   expect(detections).toHaveLength(0)
 
   // worker.dispatch.race_loss must be logged

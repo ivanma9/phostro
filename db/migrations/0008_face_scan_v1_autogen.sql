@@ -1,35 +1,87 @@
 -- 0008 — Face scan v1: multi-angle enrollment + ArcFace R50 (512-d).
 --
--- Hand-written; supersedes drizzle-kit's auto-generated SET DATA TYPE which
--- can't safely change pgvector dimensions on a populated column.
+-- ADDITIVE MIGRATION (Option C). v1 face_detections / face_clusters are NOT
+-- touched. New 512-d ArcFace pipeline writes to *_v2 shadow tables alongside.
+-- Rollback path: revert app + worker code; v1 tables remain populated and the
+-- old (pre-face-scan) code path keeps reading them. After ≥1 week of clean v2
+-- operation, drop v1 tables in a follow-up migration.
 --
--- Destructive migration:
---   * face_detections.embedding is dropped (no way to remap 128-d SFace → 512-d ArcFace)
---   * face_clusters are wiped (representative embeddings now invalid)
---   * users.face_embedding is NULLed (forces re-enrollment via the new flow)
--- All face data is re-derived by re-queueing detect jobs against the same photos.
+-- This migration does NOT (intentionally):
+--   - DROP, TRUNCATE, or alter v1 face_detections / face_clusters
+--   - NULL out users.face_embedding (preserves prior enrollments for rollback)
+--   - Change processing_state on any photo
+-- The only mutating writes are at the bottom: re-queue 'detect' jobs against
+-- all ready/processing photos so the new worker (which writes to *_v2) can
+-- populate the new tables. Old 'detect' rows in 'succeeded' state are deleted
+-- to free the partial unique index slot — that's bookkeeping data, not face
+-- detection data.
 --
--- DEPLOY SEQUENCE (must follow before running this migration):
+-- DEPLOY SEQUENCE (less destructive than the prior plan, still required):
 --   1. fly scale count 0 -a phostro-worker  (drain in-flight workers)
---   2. Wait for photo_jobs.state='claimed' to drain (or stale-claim threshold)
+--   2. Wait for photo_jobs.state='claimed' to drop to 0
 --   3. Run THIS migration
---   4. Deploy new worker image (ArcFace R50 + 512-d FaceOut + yaw)
---   5. Deploy Vercel app (new schema reader + 512-d API + face-scan UI)
+--   4. Deploy new worker image (ArcFace R50, writes to face_detections_v2)
+--   5. Deploy Vercel app (reads face_detections_v2 / face_clusters_v2)
 --   6. fly scale count 1 -a phostro-worker
---
--- Rollback: forward-only. Restore from DB backup if needed. No production users
--- exist at the time of cutover; founder will re-enroll.
+-- See docs/ops/face-scan-deploy.md.
 
--- Reset orphaned in-flight jobs that were claimed by a now-stopped worker.
--- They held an active row in the unique partial index, so re-enqueue would
--- conflict otherwise. Mark failed; the partial index excludes 'failed' state.
---
--- A non-zero row count below means the deploy runbook's "drain workers" step
--- was incomplete — the affected jobs may have written 128-d embeddings into
--- the old vector(128) column just before the column was replaced. The
--- migration still completes (those detections are about to be wiped anyway),
--- but operators should investigate why workers were not drained. See
--- docs/ops/face-scan-deploy.md.
+CREATE TABLE "face_clusters_v2" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"event_id" uuid NOT NULL,
+	"representative_detection_id" uuid,
+	"representative_embedding" vector(512) NOT NULL,
+	"member_count" integer DEFAULT 1 NOT NULL,
+	"claimed_by_user_id" uuid,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "face_detections_v2" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"photo_id" uuid NOT NULL,
+	"bbox_x1" real NOT NULL,
+	"bbox_y1" real NOT NULL,
+	"bbox_x2" real NOT NULL,
+	"bbox_y2" real NOT NULL,
+	"confidence" real NOT NULL,
+	"landmarks_json" jsonb NOT NULL,
+	"embedding" vector(512) NOT NULL,
+	"yaw" real NOT NULL,
+	"cluster_id" uuid,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "user_face_embeddings" (
+	"user_id" uuid NOT NULL,
+	"angle" text NOT NULL,
+	"embedding" vector(512) NOT NULL,
+	"quality_score" integer NOT NULL,
+	"yaw" real NOT NULL,
+	"preview_r2_key" text NOT NULL,
+	"enrolled_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "user_face_embeddings_user_id_angle_pk" PRIMARY KEY("user_id","angle"),
+	CONSTRAINT "user_face_embeddings_angle_check" CHECK (angle IN ('frontal','left','right'))
+);
+--> statement-breakpoint
+ALTER TABLE "face_clusters_v2" ADD CONSTRAINT "face_clusters_v2_event_id_events_id_fk" FOREIGN KEY ("event_id") REFERENCES "public"."events"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "face_clusters_v2" ADD CONSTRAINT "face_clusters_v2_representative_detection_id_face_detections_v2_id_fk" FOREIGN KEY ("representative_detection_id") REFERENCES "public"."face_detections_v2"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "face_clusters_v2" ADD CONSTRAINT "face_clusters_v2_claimed_by_user_id_users_id_fk" FOREIGN KEY ("claimed_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "face_detections_v2" ADD CONSTRAINT "face_detections_v2_photo_id_photos_id_fk" FOREIGN KEY ("photo_id") REFERENCES "public"."photos"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "face_detections_v2" ADD CONSTRAINT "face_detections_v2_cluster_id_face_clusters_v2_id_fk" FOREIGN KEY ("cluster_id") REFERENCES "public"."face_clusters_v2"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "user_face_embeddings" ADD CONSTRAINT "user_face_embeddings_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "face_clusters_v2_event_id_idx" ON "face_clusters_v2" USING btree ("event_id");--> statement-breakpoint
+CREATE INDEX "face_detections_v2_photo_id_idx" ON "face_detections_v2" USING btree ("photo_id");--> statement-breakpoint
+CREATE INDEX "face_detections_v2_embedding_idx" ON "face_detections_v2" USING ivfflat ("embedding" vector_cosine_ops) WITH (lists=100);--> statement-breakpoint
+CREATE INDEX "user_face_embeddings_user_id_idx" ON "user_face_embeddings" USING btree ("user_id");--> statement-breakpoint
+
+-- Re-queue detect jobs so the new worker populates face_detections_v2 for
+-- every existing photo. Two-step: (1) free the partial unique index slot held
+-- by prior 'succeeded' detect jobs; (2) reset stale 'claimed' jobs (defense
+-- in depth — operator should have drained workers per runbook); (3) insert
+-- the new queued rows. ON CONFLICT DO NOTHING is a safety net for re-runs.
+DELETE FROM "photo_jobs"
+ WHERE kind = 'detect' AND state = 'succeeded';--> statement-breakpoint
+
 DO $$
 DECLARE
   reset_count integer;
@@ -39,87 +91,16 @@ BEGIN
          last_error = 'migration_face_scan_v1_reset',
          failed_at = now(),
          updated_at = now()
-   WHERE state = 'claimed';
+   WHERE state = 'claimed' AND kind = 'detect';
   GET DIAGNOSTICS reset_count = ROW_COUNT;
   IF reset_count > 0 THEN
-    RAISE NOTICE 'face_scan_v1: force-failed % stale claimed jobs (drain incomplete?)', reset_count;
+    RAISE NOTICE 'face_scan_v1: force-failed % stale claimed detect jobs (drain incomplete?)', reset_count;
   END IF;
-END $$;
---> statement-breakpoint
+END $$;--> statement-breakpoint
 
--- Drop the IVFFlat index (it's bound to the column's vector dim).
-DROP INDEX IF EXISTS "face_detections_embedding_idx";
---> statement-breakpoint
-
--- Wipe face_detections + face_clusters. CASCADE handles the circular FK pair.
-TRUNCATE TABLE "face_detections", "face_clusters" CASCADE;
---> statement-breakpoint
-
--- Recreate vector columns at the new 512-d dimension.
-ALTER TABLE "face_detections"
-  DROP COLUMN "embedding",
-  ADD COLUMN "embedding" vector(512) NOT NULL;
---> statement-breakpoint
-
-ALTER TABLE "face_clusters"
-  DROP COLUMN "representative_embedding",
-  ADD COLUMN "representative_embedding" vector(512) NOT NULL;
---> statement-breakpoint
-
--- Recreate IVFFlat index. lists=100 unchanged from pre-migration tuning;
--- planner will prefer seq scan until the table refills enough for the index
--- to be selective. ANALYZE after the re-detect backlog clears.
-CREATE INDEX "face_detections_embedding_idx" ON "face_detections"
-  USING ivfflat ("embedding" vector_cosine_ops)
-  WITH (lists = 100);
---> statement-breakpoint
-
--- New per-angle enrollment table. Source of truth for face matching post-cutover.
-CREATE TABLE "user_face_embeddings" (
-  "user_id" uuid NOT NULL,
-  "angle" text NOT NULL,
-  "embedding" vector(512) NOT NULL,
-  "quality_score" integer NOT NULL,
-  "yaw" real NOT NULL,
-  "preview_r2_key" text NOT NULL,
-  "enrolled_at" timestamp NOT NULL DEFAULT now(),
-  CONSTRAINT "user_face_embeddings_user_id_angle_pk" PRIMARY KEY ("user_id", "angle"),
-  CONSTRAINT "user_face_embeddings_user_id_users_id_fk"
-    FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade,
-  CONSTRAINT "user_face_embeddings_angle_check"
-    CHECK ("angle" IN ('frontal', 'left', 'right'))
-);
---> statement-breakpoint
-
-CREATE INDEX "user_face_embeddings_user_id_idx" ON "user_face_embeddings" ("user_id");
---> statement-breakpoint
-
--- Force re-enrollment of all existing users. Legacy single-selfie embedding
--- is unusable against the 512-d ArcFace cluster representatives.
-UPDATE "users"
-   SET face_embedding = NULL,
-       face_quality_score = NULL,
-       face_enrolled_at = NULL
- WHERE face_embedding IS NOT NULL
-    OR face_quality_score IS NOT NULL
-    OR face_enrolled_at IS NOT NULL;
---> statement-breakpoint
-
--- Re-queue 'detect' jobs for every photo whose pipeline previously succeeded
--- or was mid-flight. The partial unique index on (photo_id, kind, active states)
--- prevents duplicate active rows; ON CONFLICT DO NOTHING is a defense-in-depth
--- guard for re-runs.
 INSERT INTO "photo_jobs" (photo_id, kind, state)
 SELECT id, 'detect', 'queued'
   FROM "photos"
  WHERE processing_state IN ('ready', 'processing')
    AND deleted_at IS NULL
 ON CONFLICT DO NOTHING;
---> statement-breakpoint
-
--- Photos that were 'processing' had their face_detections wiped. Reset them
--- to 'pending' so the upload pipeline reprocesses cleanly.
-UPDATE "photos"
-   SET processing_state = 'pending',
-       processing_claimed_at = NULL
- WHERE processing_state = 'processing';

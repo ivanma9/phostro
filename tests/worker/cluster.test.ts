@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { db } from '@/db'
-import { eventMembers, events, faceClusters, faceDetections, photos, users } from '@/db/schema'
+import { eventMembers, events, faceClustersV2, faceDetectionsV2, photos, users } from '@/db/schema'
 
 // Helper: normalize a vector to unit length
 function normalize(v: number[]): number[] {
@@ -60,7 +60,7 @@ async function seedPhoto(eventId: string, userId: string) {
 
 async function seedDetection(photoId: string, embedding: number[], clusterId?: string) {
   const [d] = await db
-    .insert(faceDetections)
+    .insert(faceDetectionsV2)
     .values({
       photoId,
       bboxX1: 0.1,
@@ -70,6 +70,7 @@ async function seedDetection(photoId: string, embedding: number[], clusterId?: s
       confidence: 0.9,
       landmarksJson: [],
       embedding,
+      yaw: 0.0,
       ...(clusterId ? { clusterId } : {}),
     })
     .returning()
@@ -83,7 +84,7 @@ async function seedCluster(
   representativeDetectionId?: string,
 ) {
   const [c] = await db
-    .insert(faceClusters)
+    .insert(faceClustersV2)
     .values({
       eventId,
       representativeEmbedding: embedding,
@@ -95,8 +96,8 @@ async function seedCluster(
 }
 
 beforeEach(async () => {
-  await db.delete(faceDetections)
-  await db.delete(faceClusters)
+  await db.delete(faceDetectionsV2)
+  await db.delete(faceClustersV2)
   await db.delete(photos)
   await db.delete(eventMembers)
   await db.delete(events)
@@ -116,11 +117,11 @@ test('C1: three near-identical detections produce 1 cluster with member_count=3'
   const { runClusterJob } = await import('@/lib/worker/cluster')
   await runClusterJob()
 
-  const clusters = await db.select().from(faceClusters).where(eq(faceClusters.eventId, e.id))
+  const clusters = await db.select().from(faceClustersV2).where(eq(faceClustersV2.eventId, e.id))
   expect(clusters).toHaveLength(1)
   expect(clusters[0].memberCount).toBe(3)
 
-  const detections = await db.select().from(faceDetections).where(eq(faceDetections.photoId, p.id))
+  const detections = await db.select().from(faceDetectionsV2).where(eq(faceDetectionsV2.photoId, p.id))
   expect(detections.every((d) => d.clusterId === clusters[0].id)).toBe(true)
 })
 
@@ -138,7 +139,7 @@ test('C2: three orthogonal detections produce 3 clusters each with member_count=
   const { runClusterJob } = await import('@/lib/worker/cluster')
   await runClusterJob()
 
-  const clusters = await db.select().from(faceClusters).where(eq(faceClusters.eventId, e.id))
+  const clusters = await db.select().from(faceClustersV2).where(eq(faceClustersV2.eventId, e.id))
   expect(clusters).toHaveLength(3)
   expect(clusters.every((c) => c.memberCount === 1)).toBe(true)
 })
@@ -160,7 +161,7 @@ test('C3: same embeddings in two different events produce separate clusters (eve
   const { runClusterJob } = await import('@/lib/worker/cluster')
   await runClusterJob()
 
-  const allClusters = await db.select().from(faceClusters)
+  const allClusters = await db.select().from(faceClustersV2)
   // Must be exactly 2 clusters — one per event
   expect(allClusters).toHaveLength(2)
 
@@ -185,7 +186,7 @@ test('C4: already-clustered detections are not re-processed', async () => {
   const { runClusterJob } = await import('@/lib/worker/cluster')
   await runClusterJob()
 
-  const clusters = await db.select().from(faceClusters)
+  const clusters = await db.select().from(faceClustersV2)
   // No new cluster created
   expect(clusters).toHaveLength(1)
   expect(clusters[0].id).toBe(existingCluster.id)
@@ -208,7 +209,7 @@ test('C5: running mean produces correct representative_embedding for 2 similar d
   const { runClusterJob } = await import('@/lib/worker/cluster')
   await runClusterJob()
 
-  const clusters = await db.select().from(faceClusters).where(eq(faceClusters.eventId, e.id))
+  const clusters = await db.select().from(faceClustersV2).where(eq(faceClustersV2.eventId, e.id))
   expect(clusters).toHaveLength(1)
   expect(clusters[0].memberCount).toBe(2)
 
@@ -284,11 +285,11 @@ test('C7: new similar detection merges into existing cluster (member_count=2)', 
   const { runClusterJob } = await import('@/lib/worker/cluster')
   await runClusterJob()
 
-  const clusters = await db.select().from(faceClusters).where(eq(faceClusters.eventId, e.id))
+  const clusters = await db.select().from(faceClustersV2).where(eq(faceClustersV2.eventId, e.id))
   expect(clusters).toHaveLength(1)
   expect(clusters[0].memberCount).toBe(2)
 
-  const detections = await db.select().from(faceDetections).where(eq(faceDetections.photoId, p.id))
+  const detections = await db.select().from(faceDetectionsV2).where(eq(faceDetectionsV2.photoId, p.id))
   expect(detections.every((d) => d.clusterId === existingCluster.id)).toBe(true)
 })
 
@@ -307,7 +308,7 @@ test('C8: new dissimilar detection creates a second cluster', async () => {
   const { runClusterJob } = await import('@/lib/worker/cluster')
   await runClusterJob()
 
-  const clusters = await db.select().from(faceClusters).where(eq(faceClusters.eventId, e.id))
+  const clusters = await db.select().from(faceClustersV2).where(eq(faceClustersV2.eventId, e.id))
   expect(clusters).toHaveLength(2)
   const existing = clusters.find((c) => c.id === existingCluster.id)
   const newCluster = clusters.find((c) => c.id !== existingCluster.id)

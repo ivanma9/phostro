@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { beforeEach, expect, test } from 'vitest'
 import { db } from '@/db'
-import { eventMembers, events, faceClusters, faceDetections, photos, users } from '@/db/schema'
+import { eventMembers, events, faceClustersV2, faceDetectionsV2, photos, users } from '@/db/schema'
 
 async function seedFixtures() {
   const [u] = await db
@@ -30,8 +30,8 @@ async function seedFixtures() {
 }
 
 beforeEach(async () => {
-  await db.delete(faceDetections)
-  await db.delete(faceClusters)
+  await db.delete(faceDetectionsV2)
+  await db.delete(faceClustersV2)
   await db.delete(photos)
   await db.delete(eventMembers)
   await db.delete(events)
@@ -41,12 +41,12 @@ beforeEach(async () => {
 const DIM = 512
 const makeEmbedding = (len: number) => Array.from({ length: len }, (_, i) => i / len)
 
-test('round-trip: insert face_clusters + face_detections with 512-d embedding and linked cluster_id', async () => {
+test('round-trip: insert face_clusters_v2 + face_detections_v2 with 512-d embedding and linked cluster_id', async () => {
   const { e, p } = await seedFixtures()
   const embedding = makeEmbedding(DIM)
 
   const [cluster] = await db
-    .insert(faceClusters)
+    .insert(faceClustersV2)
     .values({
       eventId: e.id,
       representativeEmbedding: embedding,
@@ -54,7 +54,7 @@ test('round-trip: insert face_clusters + face_detections with 512-d embedding an
     .returning()
 
   const [det] = await db
-    .insert(faceDetections)
+    .insert(faceDetectionsV2)
     .values({
       photoId: p.id,
       bboxX1: 0.1,
@@ -70,6 +70,7 @@ test('round-trip: insert face_clusters + face_detections with 512-d embedding an
         [9, 10],
       ],
       embedding,
+      yaw: 0.0,
       clusterId: cluster.id,
     })
     .returning()
@@ -78,7 +79,7 @@ test('round-trip: insert face_clusters + face_detections with 512-d embedding an
   expect(det.clusterId).toBe(cluster.id)
 
   // Fetch back and verify embedding round-trips correctly
-  const rows = await db.select().from(faceDetections).where(sql`id = ${det.id}`)
+  const rows = await db.select().from(faceDetectionsV2).where(sql`id = ${det.id}`)
   expect(rows).toHaveLength(1)
   expect(rows[0].embedding).toHaveLength(DIM)
   for (let i = 0; i < DIM; i++) {
@@ -91,7 +92,7 @@ test('pgvector rejects embedding with wrong dimension (511 floats)', async () =>
   const badEmbedding = makeEmbedding(511)
 
   await expect(
-    db.insert(faceDetections).values({
+    db.insert(faceDetectionsV2).values({
       photoId: p.id,
       bboxX1: 0.1,
       bboxY1: 0.1,
@@ -106,6 +107,7 @@ test('pgvector rejects embedding with wrong dimension (511 floats)', async () =>
         [9, 10],
       ],
       embedding: badEmbedding,
+      yaw: 0.0,
     }),
   ).rejects.toThrow()
 })

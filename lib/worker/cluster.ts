@@ -30,7 +30,7 @@ type InsertedRow = { id: string }
 /**
  * Runs the per-event incremental cosine clustering job.
  *
- * For every event that has unclustered face_detections (cluster_id IS NULL):
+ * For every event that has unclustered face_detections_v2 (cluster_id IS NULL):
  *   1. Iterate unclustered detections in created_at ASC order (deterministic).
  *   2. For each detection, query existing clusters ordered by cosine distance.
  *   3. If nearest cluster distance < matchMaxDistance: assign + update running mean.
@@ -52,7 +52,7 @@ export async function runClusterJob(opts?: ClusterJobOpts): Promise<ClusterJobRe
     const eventsWithUnclustered = Array.from(
       (await db.execute(sql`
         SELECT DISTINCT p.event_id
-        FROM face_detections fd
+        FROM face_detections_v2 fd
         JOIN photos p ON p.id = fd.photo_id
         WHERE fd.cluster_id IS NULL
       `)) as unknown as EventRow[],
@@ -69,7 +69,7 @@ export async function runClusterJob(opts?: ClusterJobOpts): Promise<ClusterJobRe
         const unclusteredDetections = Array.from(
           (await tx.execute(sql`
             SELECT fd.id, fd.embedding
-            FROM face_detections fd
+            FROM face_detections_v2 fd
             JOIN photos p ON p.id = fd.photo_id
             WHERE p.event_id = ${eventId}
               AND fd.cluster_id IS NULL
@@ -92,7 +92,7 @@ export async function runClusterJob(opts?: ClusterJobOpts): Promise<ClusterJobRe
                 fc.representative_embedding,
                 fc.member_count,
                 (fc.representative_embedding <=> ${embeddingLiteral}::vector) AS distance
-              FROM face_clusters fc
+              FROM face_clusters_v2 fc
               WHERE fc.event_id = ${eventId}
               ORDER BY fc.representative_embedding <=> ${embeddingLiteral}::vector
               LIMIT 1
@@ -113,7 +113,7 @@ export async function runClusterJob(opts?: ClusterJobOpts): Promise<ClusterJobRe
             const newMeanLiteral = `[${newMean.join(',')}]`
 
             await tx.execute(sql`
-              UPDATE face_clusters
+              UPDATE face_clusters_v2
               SET
                 member_count = ${newCount},
                 representative_embedding = ${newMeanLiteral}::vector,
@@ -122,7 +122,7 @@ export async function runClusterJob(opts?: ClusterJobOpts): Promise<ClusterJobRe
             `)
 
             await tx.execute(sql`
-              UPDATE face_detections
+              UPDATE face_detections_v2
               SET cluster_id = ${cluster.id}
               WHERE id = ${det.id}
             `)
@@ -132,7 +132,7 @@ export async function runClusterJob(opts?: ClusterJobOpts): Promise<ClusterJobRe
             // Create a new cluster seeded with this detection's embedding
             const inserted = Array.from(
               (await tx.execute(sql`
-                INSERT INTO face_clusters (event_id, representative_embedding, representative_detection_id, member_count)
+                INSERT INTO face_clusters_v2 (event_id, representative_embedding, representative_detection_id, member_count)
                 VALUES (${eventId}, ${embeddingLiteral}::vector, ${det.id}, 1)
                 RETURNING id
               `)) as unknown as InsertedRow[],
@@ -141,7 +141,7 @@ export async function runClusterJob(opts?: ClusterJobOpts): Promise<ClusterJobRe
             const newClusterId = inserted[0].id
 
             await tx.execute(sql`
-              UPDATE face_detections
+              UPDATE face_detections_v2
               SET cluster_id = ${newClusterId}
               WHERE id = ${det.id}
             `)

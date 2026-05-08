@@ -5,7 +5,7 @@ import { db } from '@/db'
 import {
   eventMembers,
   events,
-  faceDetections,
+  faceDetectionsV2,
   photos,
   userFaceEmbeddings,
   users,
@@ -21,7 +21,7 @@ function unitVec(pos: number): number[] {
 }
 
 beforeEach(async () => {
-  await db.delete(faceDetections)
+  await db.delete(faceDetectionsV2)
   await db.delete(photos)
   await db.delete(eventMembers)
   await db.delete(events)
@@ -106,12 +106,13 @@ async function seedPhoto(
 
 async function seedDetection(photoId: string, embedding: number[]) {
   await db.execute(sql`
-    INSERT INTO face_detections (photo_id, bbox_x1, bbox_y1, bbox_x2, bbox_y2, confidence, landmarks_json, embedding)
+    INSERT INTO face_detections_v2 (photo_id, bbox_x1, bbox_y1, bbox_x2, bbox_y2, confidence, landmarks_json, embedding, yaw)
     VALUES (
       ${photoId},
       0.1, 0.1, 0.5, 0.5, 0.9,
       '[]'::jsonb,
-      ${`[${embedding.join(',')}]`}::vector
+      ${`[${embedding.join(',')}]`}::vector,
+      0.0
     )
   `)
 }

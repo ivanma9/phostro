@@ -110,14 +110,14 @@ async function main(): Promise<void> {
   const { eq, sql } = await import('drizzle-orm')
   const { db } = await import('@/db')
   const {
-    users, events, eventMembers, photos, photoJobs, faceDetections, faceClusters,
+    users, events, eventMembers, photos, photoJobs, faceDetectionsV2, faceClustersV2,
   } = await import('@/db/schema')
   const { processOneJob } = await import('@/lib/worker/dispatcher')
   const { runClusterJob } = await import('@/lib/worker/cluster')
 
   async function cleanFixtures(): Promise<void> {
-    await db.delete(faceDetections)
-    await db.delete(faceClusters)
+    await db.delete(faceDetectionsV2)
+    await db.delete(faceClustersV2)
     await db.delete(photoJobs)
     await db.delete(photos)
     await db.delete(eventMembers)
@@ -186,8 +186,8 @@ async function main(): Promise<void> {
 
     const detections = await db
       .select()
-      .from(faceDetections)
-      .where(eq(faceDetections.photoId, photo.id))
+      .from(faceDetectionsV2)
+      .where(eq(faceDetectionsV2.photoId, photo.id))
     check(
       'face_detections has ≥1 row',
       detections.length >= 1,
@@ -224,8 +224,8 @@ async function main(): Promise<void> {
 
     const clusters = await db
       .select()
-      .from(faceClusters)
-      .where(eq(faceClusters.eventId, event.id))
+      .from(faceClustersV2)
+      .where(eq(faceClustersV2.eventId, event.id))
     check(
       'face_clusters has ≥1 row for the event',
       clusters.length >= 1,
@@ -234,8 +234,8 @@ async function main(): Promise<void> {
 
     const detectionsAfter = await db
       .select()
-      .from(faceDetections)
-      .where(eq(faceDetections.photoId, photo.id))
+      .from(faceDetectionsV2)
+      .where(eq(faceDetectionsV2.photoId, photo.id))
     check(
       'detection.cluster_id assigned after cluster run',
       detectionsAfter[0]?.clusterId != null,

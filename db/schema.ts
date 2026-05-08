@@ -231,7 +231,7 @@ export const faceClusters = pgTable(
       (): AnyPgColumn => faceDetections.id,
       { onDelete: 'set null' },
     ),
-    representativeEmbedding: vector('representative_embedding', 512).notNull(),
+    representativeEmbedding: vector('representative_embedding', 128).notNull(),
     memberCount: integer('member_count').notNull().default(1),
     // Phase 4 sets this; intentionally NULL in Phase 3.
     // ON DELETE SET NULL: if the user account is deleted the cluster stays unclaimed.
@@ -257,7 +257,7 @@ export const faceDetections = pgTable(
     bboxY2: real('bbox_y2').notNull(),
     confidence: real('confidence').notNull(),
     landmarksJson: jsonb('landmarks_json').notNull(),
-    embedding: vector('embedding', 512).notNull(),
+    embedding: vector('embedding', 128).notNull(),
     // Nullable; set by clustering job. ON DELETE SET NULL so losing a cluster
     // doesn't cascade-delete detection rows.
     clusterId: uuid('cluster_id').references(() => faceClusters.id, {
@@ -271,6 +271,67 @@ export const faceDetections = pgTable(
     // when face_detections exceeds ~50k rows per event. The planner often prefers
     // seq-scan over this index at low row counts, which is correct behavior.
     index('face_detections_embedding_idx')
+      .using('ivfflat', t.embedding.op('vector_cosine_ops'))
+      .with({ lists: 100 }),
+  ],
+)
+
+// ---------------------------------------------------------------------------
+// v2 face tables (face-scan v1 / ArcFace R50, 512-d) — shadow tables.
+//
+// Additive deploy pattern: face_detections / face_clusters above stay at
+// vector(128) and are not touched by the face-scan-v1 migration. New code
+// (dispatcher, cluster job, you-feed) reads/writes only the *_v2 tables.
+// Rollback = revert app+worker code; v1 tables are still populated and the
+// old code path keeps working. After ≥1 week of clean v2 operation, the v1
+// tables can be dropped in a follow-up migration.
+// ---------------------------------------------------------------------------
+
+export const faceClustersV2 = pgTable(
+  'face_clusters_v2',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    eventId: uuid('event_id')
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    representativeDetectionId: uuid('representative_detection_id').references(
+      (): AnyPgColumn => faceDetectionsV2.id,
+      { onDelete: 'set null' },
+    ),
+    representativeEmbedding: vector('representative_embedding', 512).notNull(),
+    memberCount: integer('member_count').notNull().default(1),
+    claimedByUserId: uuid('claimed_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => [index('face_clusters_v2_event_id_idx').on(t.eventId)],
+)
+
+export const faceDetectionsV2 = pgTable(
+  'face_detections_v2',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    photoId: uuid('photo_id')
+      .notNull()
+      .references(() => photos.id, { onDelete: 'cascade' }),
+    bboxX1: real('bbox_x1').notNull(),
+    bboxY1: real('bbox_y1').notNull(),
+    bboxX2: real('bbox_x2').notNull(),
+    bboxY2: real('bbox_y2').notNull(),
+    confidence: real('confidence').notNull(),
+    landmarksJson: jsonb('landmarks_json').notNull(),
+    embedding: vector('embedding', 512).notNull(),
+    yaw: real('yaw').notNull(),
+    clusterId: uuid('cluster_id').references(() => faceClustersV2.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('face_detections_v2_photo_id_idx').on(t.photoId),
+    index('face_detections_v2_embedding_idx')
       .using('ivfflat', t.embedding.op('vector_cosine_ops'))
       .with({ lists: 100 }),
   ],

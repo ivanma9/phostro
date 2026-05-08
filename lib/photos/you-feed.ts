@@ -65,7 +65,7 @@ export async function listYouFeed(
                fd.embedding <=> ${l3}::vector
              )) AS distance
       FROM photos p
-      JOIN face_detections fd ON fd.photo_id = p.id
+      JOIN face_detections_v2 fd ON fd.photo_id = p.id
       WHERE p.event_id = ${eventId}
         AND p.processing_state = 'ready'
         AND p.deleted_at IS NULL

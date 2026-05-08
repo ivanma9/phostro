@@ -169,15 +169,15 @@ async function main(): Promise<void> {
   // Safe to import project modules now — env is set
   const { eq, sql } = await import('drizzle-orm')
   const { db } = await import('@/db')
-  const { users, events, eventMembers, photos, photoJobs, faceDetections, faceClusters, shareLinks } =
+  const { users, events, eventMembers, photos, photoJobs, faceDetectionsV2, faceClustersV2, shareLinks } =
     await import('@/db/schema')
   const { processOneJob } = await import('@/lib/worker/dispatcher')
   const { listYouFeed } = await import('@/lib/photos/you-feed')
 
   async function cleanFixtures(): Promise<void> {
     await db.delete(shareLinks)
-    await db.delete(faceDetections)
-    await db.delete(faceClusters)
+    await db.delete(faceDetectionsV2)
+    await db.delete(faceClustersV2)
     await db.delete(photoJobs)
     await db.delete(photos)
     await db.delete(eventMembers)
@@ -255,8 +255,8 @@ async function main(): Promise<void> {
 
     const enrollDetections = await db
       .select()
-      .from(faceDetections)
-      .where(eq(faceDetections.photoId, enrollPhoto.id))
+      .from(faceDetectionsV2)
+      .where(eq(faceDetectionsV2.photoId, enrollPhoto.id))
 
     if (enrollDetections.length === 0) {
       throw new Error('No face detected in enrollment selfie — cannot derive owner embedding')
@@ -276,7 +276,7 @@ async function main(): Promise<void> {
     console.log('  users.face_embedding updated')
 
     // Delete the temp enrollment photo + its detections (not part of contribution set)
-    await db.delete(faceDetections).where(eq(faceDetections.photoId, enrollPhoto.id))
+    await db.delete(faceDetectionsV2).where(eq(faceDetectionsV2.photoId, enrollPhoto.id))
     await db.delete(photoJobs).where(eq(photoJobs.id, enrollJob.id))
     await db.delete(photos).where(eq(photos.id, enrollPhoto.id))
     console.log('  enrollment photo/job/detections cleaned up')

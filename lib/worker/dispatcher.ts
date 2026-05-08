@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { db } from '@/db'
-import { faceDetections, photos } from '@/db/schema'
+import { faceDetectionsV2, photos } from '@/db/schema'
 import { claimNextJob } from '@/lib/jobs/claim'
 import { markFailed, markSucceeded, type PhotoJob } from '@/lib/jobs/complete'
 import { detectPhoto } from './client'
@@ -55,9 +55,11 @@ export async function processOneJob(workerId: string): Promise<PhotoJob | null> 
 
     // Step 4: transactional commit — face_detections + has_detected_faces + markSucceeded
     const succeededJob = await db.transaction(async (tx) => {
-      // Insert face_detections rows (may be empty)
+      // Insert face_detections_v2 rows (may be empty). The v1 face_detections
+      // table is intentionally not touched — see 0008 migration header for the
+      // additive-deploy rationale.
       if (detectResult.faces.length > 0) {
-        await tx.insert(faceDetections).values(
+        await tx.insert(faceDetectionsV2).values(
           detectResult.faces.map((face) => ({
             photoId,
             bboxX1: face.bbox_x1,
@@ -67,6 +69,7 @@ export async function processOneJob(workerId: string): Promise<PhotoJob | null> 
             confidence: face.confidence,
             landmarksJson: face.landmarks,
             embedding: face.embedding,
+            yaw: face.yaw,
           })),
         )
       }
