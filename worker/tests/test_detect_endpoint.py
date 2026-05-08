@@ -65,11 +65,11 @@ def app_with_mock_models(app_env):
         landmarks=fake_landmarks,
     )
     mock_detector.detect.return_value = ([fake_face], 0.05)
-    mock_embedder.embed.return_value = np.zeros(128, dtype=np.float32)
+    mock_embedder.embed.return_value = np.zeros(512, dtype=np.float32)
 
     app_env.state.detector = mock_detector
     app_env.state.embedder = mock_embedder
-    app_env.state.model_hashes = {"det_10g.onnx": "aaa", "face_recognition_sface_2021dec.onnx": "bbb"}
+    app_env.state.model_hashes = {"det_10g.onnx": "aaa", "w600k_r50.onnx": "bbb"}
     app_env.state.worker_concurrency = "4"
     app_env.state.commit_sha = "deadbeef"
     return app_env
@@ -264,7 +264,9 @@ async def test_detect_inference_path(app_env, capsys):
     assert resp.status_code == 200
     data = resp.json()
     assert len(data["faces"]) >= 2  # spec line 427: >=2 faces in group_03.jpg
-    assert len(data["faces"][0]["embedding"]) == 128
+    assert len(data["faces"][0]["embedding"]) == 512
+    assert "yaw" in data["faces"][0]
+    assert isinstance(data["faces"][0]["yaw"], float)
 
 
 # ---------------------------------------------------------------------------

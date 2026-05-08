@@ -222,3 +222,38 @@ def _nms(boxes: np.ndarray, scores: np.ndarray, iou_threshold: float) -> list[in
         iou = inter / (areas[i] + areas[order[1:]] - inter + 1e-7)
         order = order[1:][iou <= iou_threshold]
     return keep
+
+
+# -- Pose / yaw estimation ----------------------------------------------------
+
+def estimate_yaw(landmarks: np.ndarray) -> float:
+    """
+    Coarse yaw proxy from RetinaFace 5-point landmarks. Unit-less signed score.
+
+    Computes the normalized horizontal offset of the nose vs the eye midpoint,
+    divided by inter-eye distance. Robust to whichever eye is at index 0 vs 1
+    by using min/max on the eye x-coords.
+
+    Sign convention (verified by test_yaw_estimation.py): the alignment template
+    in align.py places landmarks[0] at image-left of the canonical 112×112 crop,
+    so landmarks[0]=image-left eye=subject's right eye when subject faces camera.
+    Subject turning head to their LEFT moves the nose toward image-right →
+    positive yaw. Turning RIGHT → negative yaw.
+
+    Returns:
+        Signed score, image-space:
+          ~0   = frontal (nose centered between eyes)
+          > 0  = head turned to USER'S LEFT (nose shifted toward image-right)
+          < 0  = head turned to USER'S RIGHT (nose shifted toward image-left)
+        Approximate magnitudes: |score| < 0.10 → frontal; |score| > 0.18 → clear yaw.
+    """
+    eye0 = landmarks[0]
+    eye1 = landmarks[1]
+    nose = landmarks[2]
+    eye_min_x = min(float(eye0[0]), float(eye1[0]))
+    eye_max_x = max(float(eye0[0]), float(eye1[0]))
+    eye_dx = eye_max_x - eye_min_x
+    if eye_dx < 1e-3:  # degenerate (vertical eyes / detection error)
+        return 0.0
+    eye_mid_x = (eye_min_x + eye_max_x) / 2.0
+    return (float(nose[0]) - eye_mid_x) / eye_dx

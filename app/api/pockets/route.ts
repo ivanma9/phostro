@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/db'
 import { eventMembers, events } from '@/db/schema'
 import { getCurrentUser } from '@/lib/auth/current-user'
+import { getFaceEnrollment } from '@/lib/auth/face-enrollment'
 import { mintShareLink } from '@/lib/share-links/storage'
 
 export const runtime = 'nodejs'
@@ -13,8 +14,12 @@ export async function POST(req: Request) {
 
   // The pocket page (You feed) is unusable without an enrolled face — surface the
   // mismatch up front instead of letting the user create a dead-end pocket.
-  if (!user.faceEmbedding) {
-    return NextResponse.json({ error: 'not_enrolled' }, { status: 412 })
+  const enrollment = await getFaceEnrollment(user.id)
+  if (!enrollment.enrolled) {
+    return NextResponse.json(
+      { error: 'not_enrolled', remainingAngles: enrollment.remainingAngles },
+      { status: 412 },
+    )
   }
 
   // 2. Validate name

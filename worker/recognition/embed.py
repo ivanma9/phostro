@@ -1,7 +1,7 @@
 """
-SFace face recognition via face_recognition_sface_2021dec.onnx (OpenCV Zoo / ONNX Runtime).
+ArcFace R50 face recognition via w600k_r50.onnx (InsightFace buffalo_l / ONNX Runtime).
 
-Returns a 128-dimensional L2-normalized embedding for an aligned 112x112 face crop.
+Returns a 512-dimensional L2-normalized embedding for an aligned 112x112 face crop.
 Cosine similarity between two embeddings is the primary matching metric.
 
 Copied verbatim from bench/src/embed.py — only PROVIDERS is imported from
@@ -25,11 +25,11 @@ import onnxruntime as ort
 from .providers import PROVIDERS
 
 # -- Model config -------------------------------------------------------------
-MODEL_FILENAME = "face_recognition_sface_2021dec.onnx"
+MODEL_FILENAME = "w600k_r50.onnx"
 
-# SFace input: (1, 3, 112, 112), float32, RGB, [0, 255].
+# ArcFace R50 input: (1, 3, 112, 112), float32, RGB, mean=127.5, scale=1/127.5 → [-1, +1].
 INPUT_SIZE = (112, 112)
-EMBEDDING_DIM = 128
+EMBEDDING_DIM = 512
 
 
 def load_embedder(models_dir: Path) -> "Embedder":
@@ -51,15 +51,15 @@ class Embedder:
 
     def embed(self, aligned_face_bgr: np.ndarray) -> np.ndarray:
         """
-        Compute a 128-d L2-normalized embedding for an aligned 112x112 BGR face.
+        Compute a 512-d L2-normalized embedding for an aligned 112x112 BGR face.
 
         Args:
             aligned_face_bgr: Shape (112, 112, 3), BGR (as produced by cv2.imread
-                and align_face), uint8 or float32. Internally swapped to RGB
-                before being fed to SFace.
+                and align_face), uint8 or float32. Internally swapped to RGB and
+                normalized to [-1, +1] before being fed to ArcFace R50.
 
         Returns:
-            Embedding vector, shape (128,), float32, L2-normalized.
+            Embedding vector, shape (512,), float32, L2-normalized.
         """
         blob = _preprocess(aligned_face_bgr)
         outputs = self._session.run(None, {self._input_name: blob})
@@ -88,11 +88,12 @@ def cosine_distance(a: np.ndarray, b: np.ndarray) -> float:
 # -- Preprocessing ------------------------------------------------------------
 
 def _preprocess(face_bgr: np.ndarray) -> np.ndarray:
-    """Convert an aligned BGR face crop to an SFace input blob (RGB, NCHW)."""
+    """Convert an aligned BGR face crop to an ArcFace R50 input blob (RGB, NCHW, [-1, +1])."""
     if face_bgr.shape[:2] != INPUT_SIZE:
         face_bgr = cv2.resize(face_bgr, INPUT_SIZE, interpolation=cv2.INTER_LINEAR)
 
-    face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
-    blob = face_rgb.astype(np.float32)
+    face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB).astype(np.float32)
+    # InsightFace ArcFace pipeline: (pixel - 127.5) / 127.5 → roughly [-1, +1]
+    blob = (face_rgb - 127.5) / 127.5
     blob = blob.transpose(2, 0, 1)[np.newaxis]  # (1, 3, 112, 112)
     return blob

@@ -98,14 +98,15 @@ def test_startup_succeeds_with_valid_secret(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_face_out_rejects_embedding_length_64():
+def test_face_out_rejects_embedding_length_128():
     from worker.api.detect import FaceOut
     with pytest.raises(ValidationError):
         FaceOut(
             bbox_x1=0, bbox_y1=0, bbox_x2=10, bbox_y2=10,
             confidence=0.9,
             landmarks=[[0, 0], [1, 1], [2, 2], [3, 3], [4, 4]],
-            embedding=[0.0] * 64,
+            embedding=[0.0] * 128,
+            yaw=0.0,
         )
 
 
@@ -117,18 +118,21 @@ def test_face_out_rejects_embedding_length_256():
             confidence=0.9,
             landmarks=[[0, 0], [1, 1], [2, 2], [3, 3], [4, 4]],
             embedding=[0.0] * 256,
+            yaw=0.0,
         )
 
 
-def test_face_out_accepts_embedding_length_128():
+def test_face_out_accepts_embedding_length_512():
     from worker.api.detect import FaceOut
     face = FaceOut(
         bbox_x1=0, bbox_y1=0, bbox_x2=10, bbox_y2=10,
         confidence=0.9,
         landmarks=[[0, 0], [1, 1], [2, 2], [3, 3], [4, 4]],
-        embedding=[0.0] * 128,
+        embedding=[0.0] * 512,
+        yaw=0.05,
     )
-    assert len(face.embedding) == 128
+    assert len(face.embedding) == 512
+    assert face.yaw == 0.05
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +147,8 @@ def test_face_out_rejects_too_few_landmarks():
             bbox_x1=0, bbox_y1=0, bbox_x2=10, bbox_y2=10,
             confidence=0.9,
             landmarks=[[0, 0], [1, 1], [2, 2]],
-            embedding=[0.0] * 128,
+            embedding=[0.0] * 512,
+            yaw=0.0,
         )
 
 
@@ -154,7 +159,8 @@ def test_face_out_rejects_too_many_landmarks():
             bbox_x1=0, bbox_y1=0, bbox_x2=10, bbox_y2=10,
             confidence=0.9,
             landmarks=[[0, 0], [1, 1], [2, 2], [3, 3], [4, 4], [5, 5]],
-            embedding=[0.0] * 128,
+            embedding=[0.0] * 512,
+            yaw=0.0,
         )
 
 
@@ -165,7 +171,8 @@ def test_face_out_rejects_wrong_landmark_dimensions():
             bbox_x1=0, bbox_y1=0, bbox_x2=10, bbox_y2=10,
             confidence=0.9,
             landmarks=[[1.0]],
-            embedding=[0.0] * 128,
+            embedding=[0.0] * 512,
+            yaw=0.0,
         )
 
 
@@ -176,7 +183,8 @@ def test_face_out_rejects_landmark_with_3_coords():
             bbox_x1=0, bbox_y1=0, bbox_x2=10, bbox_y2=10,
             confidence=0.9,
             landmarks=[[0, 0, 0], [1, 1, 0], [2, 2, 0], [3, 3, 0], [4, 4, 0]],
-            embedding=[0.0] * 128,
+            embedding=[0.0] * 512,
+            yaw=0.0,
         )
 
 

@@ -9,8 +9,15 @@ export type FaceOut = {
   confidence: number
   /** 5x2 landmark points */
   landmarks: number[][]
-  /** 128-dimensional embedding */
+  /** 512-dimensional ArcFace R50 embedding (L2-normalized) */
   embedding: number[]
+  /**
+   * Coarse yaw proxy from RetinaFace 5-point landmarks. Image-space, signed,
+   * unit-less. ~0 = frontal; positive = head turned to user's LEFT (nose
+   * shifted toward image-right). Sign convention pinned by
+   * worker/tests/test_yaw_estimation.py.
+   */
+  yaw: number
 }
 
 export type DetectResponse = {

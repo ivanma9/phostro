@@ -50,7 +50,12 @@ class FaceOut(BaseModel):
     bbox_y2: float
     confidence: float
     landmarks: list[list[float]]  # [[x, y], ...] × 5
-    embedding: list[float] = Field(min_length=128, max_length=128)
+    embedding: list[float] = Field(min_length=512, max_length=512)
+    # Coarse yaw proxy from RetinaFace 5-point landmarks (image-space, signed,
+    # unit-less). ~0 = frontal; positive = head turned to user's LEFT (nose
+    # shifted toward image-right). Sign convention pinned by
+    # worker/tests/test_yaw_estimation.py.
+    yaw: float
 
     @field_validator("landmarks")
     @classmethod
@@ -141,6 +146,7 @@ async def detect(
         )
 
         from worker.recognition.align import align_face
+        from worker.recognition.detect import estimate_yaw
 
         face_outs: list[FaceOut] = []
         for face in faces_raw:
@@ -148,6 +154,7 @@ async def detect(
                 None, align_face, image_bgr, face.landmarks
             )
             embedding = await loop.run_in_executor(None, embedder.embed, aligned)
+            yaw = estimate_yaw(face.landmarks)
 
             x1, y1, x2, y2 = face.bbox
             face_outs.append(
@@ -159,6 +166,7 @@ async def detect(
                     confidence=face.confidence,
                     landmarks=face.landmarks.tolist(),
                     embedding=embedding.tolist(),
+                    yaw=yaw,
                 )
             )
     except Exception as exc:

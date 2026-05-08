@@ -93,7 +93,8 @@ test('C2: detectPhoto returns faces array on 200 response', async () => {
         [0.2, 0.6],
         [0.4, 0.6],
       ],
-      embedding: Array.from({ length: 128 }, (_, i) => i / 128),
+      embedding: Array.from({ length: 512 }, (_, i) => i / 512),
+      yaw: 0.0,
     },
   ]
 
@@ -118,7 +119,7 @@ test('C2: detectPhoto returns faces array on 200 response', async () => {
 
   expect(result.faces).toHaveLength(1)
   expect(result.faces[0].confidence).toBe(0.99)
-  expect(result.faces[0].embedding).toHaveLength(128)
+  expect(result.faces[0].embedding).toHaveLength(512)
   expect(result.faces[0].bbox_x1).toBe(0.1)
   expect(result.elapsed_ms).toBe(100)
   expect(result.photo_id).toBe(photoId)

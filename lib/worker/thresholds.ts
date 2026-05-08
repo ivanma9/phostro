@@ -44,8 +44,21 @@ function load(): { match_max_distance: number; maybe_max_distance: number } {
   return cached
 }
 
-/** Binary match threshold for cosine distance. Used by the You feed filter. */
+/**
+ * Binary match threshold for cosine distance.
+ *
+ * Used by both the You-feed filter (`lib/photos/you-feed.ts`) and the
+ * per-event clustering job (`lib/worker/cluster.ts`) — single source of truth
+ * to keep the matcher and clusterer at the same operating point. Reads
+ * `MATCH_MAX_DISTANCE` env (deploy-time override) first, falls back to
+ * `worker/config/thresholds.json::match_max_distance`.
+ */
 export function getMatchMaxDistance(): number {
+  const raw = process.env.MATCH_MAX_DISTANCE
+  if (raw != null && raw !== '') {
+    const n = parseFloat(raw)
+    if (Number.isFinite(n)) return n
+  }
   return load().match_max_distance
 }
 

@@ -38,10 +38,10 @@ beforeEach(async () => {
   await db.delete(users)
 })
 
-const DIM = 128
+const DIM = 512
 const makeEmbedding = (len: number) => Array.from({ length: len }, (_, i) => i / len)
 
-test('round-trip: insert face_clusters + face_detections with 128-d embedding and linked cluster_id', async () => {
+test('round-trip: insert face_clusters + face_detections with 512-d embedding and linked cluster_id', async () => {
   const { e, p } = await seedFixtures()
   const embedding = makeEmbedding(DIM)
 
@@ -86,9 +86,9 @@ test('round-trip: insert face_clusters + face_detections with 128-d embedding an
   }
 })
 
-test('pgvector rejects embedding with wrong dimension (127 floats)', async () => {
+test('pgvector rejects embedding with wrong dimension (511 floats)', async () => {
   const { p } = await seedFixtures()
-  const badEmbedding = makeEmbedding(127)
+  const badEmbedding = makeEmbedding(511)
 
   await expect(
     db.insert(faceDetections).values({

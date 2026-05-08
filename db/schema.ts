@@ -29,11 +29,41 @@ export const users = pgTable('users', {
   name: text('name').notNull(),
   contact: text('contact').notNull().unique(),
   contactType: text('contact_type', { enum: ['email', 'phone'] }).notNull(),
+  // Legacy 128-d single-selfie embedding. Kept nullable through v1 face-scan
+  // cutover for two-phase rollback; dropped in a follow-up migration after
+  // burn-in. New code reads/writes user_face_embeddings (per-angle, 512-d).
   faceEmbedding: vector('face_embedding', 128),
   faceQualityScore: integer('face_quality_score'),
   faceEnrolledAt: timestamp('face_enrolled_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
+
+// Multi-angle enrollment table (v1 face scan). Each user has up to 3 rows
+// (frontal/left/right). Source of truth for face matching; users.faceEmbedding
+// is legacy and unused by new code.
+export const userFaceEmbeddings = pgTable(
+  'user_face_embeddings',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    // TS literal union must stay in sync with the CHECK constraint below.
+    angle: text('angle', { enum: ['frontal', 'left', 'right'] }).notNull(),
+    embedding: vector('embedding', 512).notNull(),
+    qualityScore: integer('quality_score').notNull(),
+    yaw: real('yaw').notNull(),
+    previewR2Key: text('preview_r2_key').notNull(),
+    enrolledAt: timestamp('enrolled_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.angle] }),
+    index('user_face_embeddings_user_id_idx').on(t.userId),
+    check(
+      'user_face_embeddings_angle_check',
+      sql`angle IN ('frontal','left','right')`,
+    ),
+  ],
+)
 
 export const events = pgTable('events', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -201,7 +231,7 @@ export const faceClusters = pgTable(
       (): AnyPgColumn => faceDetections.id,
       { onDelete: 'set null' },
     ),
-    representativeEmbedding: vector('representative_embedding', 128).notNull(),
+    representativeEmbedding: vector('representative_embedding', 512).notNull(),
     memberCount: integer('member_count').notNull().default(1),
     // Phase 4 sets this; intentionally NULL in Phase 3.
     // ON DELETE SET NULL: if the user account is deleted the cluster stays unclaimed.
@@ -227,7 +257,7 @@ export const faceDetections = pgTable(
     bboxY2: real('bbox_y2').notNull(),
     confidence: real('confidence').notNull(),
     landmarksJson: jsonb('landmarks_json').notNull(),
-    embedding: vector('embedding', 128).notNull(),
+    embedding: vector('embedding', 512).notNull(),
     // Nullable; set by clustering job. ON DELETE SET NULL so losing a cluster
     // doesn't cascade-delete detection rows.
     clusterId: uuid('cluster_id').references(() => faceClusters.id, {

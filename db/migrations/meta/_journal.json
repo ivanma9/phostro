@@ -57,6 +57,13 @@
       "when": 1777791552968,
       "tag": "0007_nosy_leper_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1778185225881,
+      "tag": "0008_face_scan_v1_autogen",
+      "breakpoints": true
     }
   ]
 }

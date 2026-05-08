@@ -2,7 +2,7 @@
 Face alignment using the 5-point landmark template.
 
 Applies a similarity transform to warp a detected face into a canonical
-112x112 crop suitable for SFace embedding. The template is the standard
+112x112 crop suitable for ArcFace embedding. The template is the standard
 ArcFace / InsightFace target positions, and the fit uses the closed-form
 Umeyama least-squares estimator (skimage.SimilarityTransform) — the same
 estimator the InsightFace reference uses, so embeddings stay comparable

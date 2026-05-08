@@ -1,124 +1,30 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { type ChangeEvent, type FormEvent, useRef, useState } from 'react'
+import { type FormEvent, useState } from 'react'
+
+// Pocket creation post-face-scan-v1: enrollment is a separate route. The page
+// hosting this form (app/(app)/pockets/new/page.tsx) gates on
+// getFaceEnrollment().enrolled and redirects to /me/face/enroll if missing,
+// so this form starts at "name a pocket" — no selfie sub-flow.
 
 type Phase =
   | { kind: 'name' }
-  | { kind: 'selfie'; name: string }
-  | { kind: 'enrolling'; name: string }
-  | { kind: 'enrolled'; name: string; quality: number }
   | { kind: 'creating' }
   | { kind: 'created'; pocketId: string; shareUrl: string }
   | { kind: 'error'; message: string }
-
-const RETAKE_MESSAGES: Record<string, string> = {
-  multiple_faces: 'Please retake without others in frame.',
-  no_face: "We couldn't see your face — try better lighting.",
-  too_large: 'Photo is too large (max 25 MB). Please choose a smaller one.',
-  invalid_file: "We couldn't read that photo. Please use a JPEG, PNG, or HEIC.",
-  invalid_size: 'Please choose a photo file.',
-  upload_not_found: "Upload didn't make it through — please try again.",
-  worker_unavailable:
-    'Our face check service is briefly unavailable. Please try again in a moment.',
-  unauthenticated: 'Your session expired — please sign in again.',
-}
 
 export function PocketCreateForm() {
   const [phase, setPhase] = useState<Phase>({ kind: 'name' })
   const [nameInput, setNameInput] = useState('')
   const [copied, setCopied] = useState(false)
-  const fileRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
 
-  // Step 1: name → selfie
-  function handleNameSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     const name = nameInput.trim()
     if (!name || name.length > 100) return
-    setPhase({ kind: 'selfie', name })
-  }
-
-  // Step 2: selfie file selected → enroll
-  async function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file || phase.kind !== 'selfie') return
-    const { name } = phase
-    setPhase({ kind: 'enrolling', name })
-
-    try {
-      // Step A: ask server for a presigned R2 PUT URL.
-      // Bypasses Vercel's 4.5 MB request body cap — full-res phone selfies are routinely
-      // larger than that, and a multipart POST through the function fails as 413 / network error.
-      const initRes = await fetch('/api/me/face/init', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ mimeType: file.type, sizeBytes: file.size }),
-      })
-      if (!initRes.ok) {
-        const { error } = (await initRes.json().catch(() => ({}))) as { error?: string }
-        const message =
-          (error && RETAKE_MESSAGES[error]) ?? 'Something went wrong — please try again.'
-        if (fileRef.current) fileRef.current.value = ''
-        setPhase({ kind: 'error', message })
-        return
-      }
-      const { key, putUrl } = (await initRes.json()) as { key: string; putUrl: string }
-
-      // Step B: PUT the file straight to R2.
-      const putRes = await fetch(putUrl, {
-        method: 'PUT',
-        headers: { 'content-type': file.type },
-        body: file,
-      })
-      if (!putRes.ok) {
-        if (fileRef.current) fileRef.current.value = ''
-        setPhase({ kind: 'error', message: 'Upload failed — please try again.' })
-        return
-      }
-
-      // Step C: tell the server to process the uploaded key.
-      const finRes = await fetch('/api/me/face/finalize', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ key }),
-      })
-      if (finRes.ok) {
-        const { quality } = (await finRes.json()) as { quality: number }
-        setPhase({ kind: 'enrolled', name, quality })
-        return
-      }
-      const errBody = (await finRes.json().catch(() => ({}))) as {
-        error?: string
-        detected?: number
-        topConfidence?: number | null
-      }
-      const baseMessage =
-        (errBody.error && RETAKE_MESSAGES[errBody.error]) ??
-        'Something went wrong — please try again.'
-      // Append detection diagnostics so the user sees what the model actually saw.
-      let suffix = ''
-      if (typeof errBody.detected === 'number') {
-        suffix = ` (faces detected: ${errBody.detected}`
-        if (typeof errBody.topConfidence === 'number') {
-          suffix += `, top confidence: ${errBody.topConfidence}%`
-        }
-        suffix += ')'
-      }
-      if (fileRef.current) fileRef.current.value = ''
-      setPhase({ kind: 'error', message: baseMessage + suffix })
-    } catch {
-      if (fileRef.current) fileRef.current.value = ''
-      setPhase({ kind: 'error', message: 'Network error — please try again.' })
-    }
-  }
-
-  // Step 3: confirmed enrollment → create pocket
-  async function handleCreatePocket() {
-    if (phase.kind !== 'enrolled') return
-    const { name } = phase
     setPhase({ kind: 'creating' })
-
     try {
       const res = await fetch('/api/pockets', {
         method: 'POST',
@@ -126,6 +32,13 @@ export function PocketCreateForm() {
         body: JSON.stringify({ name }),
       })
       if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string }
+        if (body.error === 'not_enrolled') {
+          // Server lost track between the page-render gate and submit. Send
+          // the user through the scan flow.
+          router.replace('/me/face/enroll?next=/pockets/new')
+          return
+        }
         setPhase({ kind: 'error', message: 'Could not create pocket — please try again.' })
         return
       }
@@ -138,7 +51,7 @@ export function PocketCreateForm() {
 
   if (phase.kind === 'name') {
     return (
-      <form onSubmit={handleNameSubmit} className="space-y-3">
+      <form onSubmit={handleSubmit} className="space-y-3">
         <input
           value={nameInput}
           onChange={(e) => setNameInput(e.target.value)}
@@ -151,46 +64,9 @@ export function PocketCreateForm() {
           type="submit"
           className="w-full rounded bg-black px-4 py-2 text-white disabled:opacity-50"
         >
-          Next
-        </button>
-      </form>
-    )
-  }
-
-  if (phase.kind === 'selfie' || phase.kind === 'enrolling') {
-    return (
-      <div className="space-y-3">
-        <p className="text-sm text-gray-600">
-          Take or upload a clear selfie so we can find your face in photos.
-        </p>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          capture="user"
-          onChange={handleFileChange}
-          disabled={phase.kind === 'enrolling'}
-          className="w-full"
-        />
-        {phase.kind === 'enrolling' && (
-          <p className="text-sm text-gray-500">Checking your photo…</p>
-        )}
-      </div>
-    )
-  }
-
-  if (phase.kind === 'enrolled') {
-    return (
-      <div className="space-y-3">
-        <p className="text-sm text-green-700">Looks great! Quality: {phase.quality}%</p>
-        <button
-          type="button"
-          onClick={handleCreatePocket}
-          className="w-full rounded bg-black px-4 py-2 text-white"
-        >
           Create pocket
         </button>
-      </div>
+      </form>
     )
   }
 

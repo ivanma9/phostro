@@ -76,7 +76,8 @@ const CANNED_FACES = [
       [0.2, 0.6],
       [0.4, 0.6],
     ],
-    embedding: Array.from({ length: 128 }, (_, i) => i / 128),
+    embedding: Array.from({ length: 512 }, (_, i) => i / 512),
+    yaw: 0.0,
   },
 ]
 
@@ -128,7 +129,7 @@ test('D1: processOneJob inserts face_detections, sets has_detected_faces=true, j
   expect(detections[0].bboxX2).toBeCloseTo(0.5)
   expect(detections[0].bboxY2).toBeCloseTo(0.7)
   expect(detections[0].confidence).toBeCloseTo(0.95)
-  expect(detections[0].embedding).toHaveLength(128)
+  expect(detections[0].embedding).toHaveLength(512)
 
   // photos.has_detected_faces = true
   const [photo] = await db.select().from(photos).where(eq(photos.id, p.id))

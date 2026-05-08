@@ -196,8 +196,8 @@ async function main(): Promise<void> {
     if (detections.length >= 1) {
       const d = detections[0]
       check(
-        'embedding has 128 dimensions',
-        Array.isArray(d.embedding) && d.embedding.length === 128,
+        'embedding has 512 dimensions',
+        Array.isArray(d.embedding) && d.embedding.length === 512,
         `length=${Array.isArray(d.embedding) ? d.embedding.length : 'not array'}`,
       )
       check('confidence > 0', d.confidence > 0, `confidence=${d.confidence}`)

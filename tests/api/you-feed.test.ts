@@ -2,12 +2,20 @@ import { sql } from 'drizzle-orm'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { GET } from '@/app/api/pockets/[id]/you/route'
 import { db } from '@/db'
-import { eventMembers, events, faceDetections, photos, users } from '@/db/schema'
+import {
+  eventMembers,
+  events,
+  faceDetections,
+  photos,
+  userFaceEmbeddings,
+  users,
+} from '@/db/schema'
+import { FACE_SCAN_ANGLES } from '@/lib/auth/face-enrollment'
 import * as currentUser from '@/lib/auth/current-user'
 
-// 128-d unit vectors for filter correctness tests
+// 512-d unit vectors for filter correctness tests
 function unitVec(pos: number): number[] {
-  const v = new Array(128).fill(0)
+  const v = new Array(512).fill(0)
   v[pos] = 1.0
   return v
 }
@@ -17,10 +25,14 @@ beforeEach(async () => {
   await db.delete(photos)
   await db.delete(eventMembers)
   await db.delete(events)
+  await db.delete(userFaceEmbeddings)
   await db.delete(users)
   vi.restoreAllMocks()
 })
 
+// When `faceEmbedding` is provided we seed all 3 angles with that vector so the
+// user passes the enrolled-3-of-3 gate. The matching SQL takes MIN(LEAST(d,d,d))
+// across angles → identical seeds collapse to one effective embedding for tests.
 async function seedUser(suffix: string, faceEmbedding?: number[]) {
   const [u] = await db
     .insert(users)
@@ -28,9 +40,20 @@ async function seedUser(suffix: string, faceEmbedding?: number[]) {
       name: `U-${suffix}`,
       contact: `you_feed_${suffix}@x.com`,
       contactType: 'email',
-      ...(faceEmbedding ? { faceEmbedding } : {}),
     })
     .returning()
+  if (faceEmbedding) {
+    for (const angle of FACE_SCAN_ANGLES) {
+      await db.insert(userFaceEmbeddings).values({
+        userId: u.id,
+        angle,
+        embedding: faceEmbedding,
+        qualityScore: 90,
+        yaw: angle === 'left' ? -0.25 : angle === 'right' ? 0.25 : 0,
+        previewR2Key: `enrollment/${u.id}/${angle}.jpg`,
+      })
+    }
+  }
   return u
 }
 

@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/db'
 import { events } from '@/db/schema'
 import { getCurrentUser } from '@/lib/auth/current-user'
+import { getFaceEmbeddings, getFaceEnrollment } from '@/lib/auth/face-enrollment'
 import { createPresignedGetUrl } from '@/lib/photos/r2'
 import { listYouFeed } from '@/lib/photos/you-feed'
 
@@ -23,12 +24,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }
 
-  // getCurrentUser already returns the full users row including face_embedding
-  if (!user.faceEmbedding) {
-    return NextResponse.json({ error: 'not_enrolled' }, { status: 412 })
+  const enrollment = await getFaceEnrollment(user.id)
+  if (!enrollment.enrolled) {
+    return NextResponse.json(
+      { error: 'not_enrolled', remainingAngles: enrollment.remainingAngles },
+      { status: 412 },
+    )
   }
 
-  const feedItems = await listYouFeed(event.id, user.faceEmbedding)
+  const ownerEmbeddings = (await getFaceEmbeddings(user.id)).map((e) => e.embedding)
+  const feedItems = await listYouFeed(event.id, ownerEmbeddings)
 
   const photos = await Promise.all(
     feedItems.map(async (item) => ({

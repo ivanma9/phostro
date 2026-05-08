@@ -1,23 +1,10 @@
 import { sql } from 'drizzle-orm'
 import { db } from '@/db'
+import { getMatchMaxDistance } from '@/lib/worker/thresholds'
 
-/**
- * Match distance threshold for cosine similarity.
- *
- * Read from MATCH_MAX_DISTANCE env var at call time (not module load), so tests
- * can override it without module reload. Defaults to 0.582 (same as
- * worker/config/thresholds.json placeholder). The lib/ side intentionally does
- * NOT import the JSON to avoid a cross-package dependency on worker/.
- */
-function getMatchMaxDistance(override?: number): number {
-  if (override != null) return override
-  const raw = process.env.MATCH_MAX_DISTANCE
-  if (raw != null && raw !== '') {
-    const n = parseFloat(raw)
-    if (Number.isFinite(n)) return n
-  }
-  return 0.582
-}
+// Single source of truth for the match threshold lives in lib/worker/thresholds
+// (env first, then worker/config/thresholds.json). Tests that need to override
+// can pass `opts.matchMaxDistance` to runClusterJob directly.
 
 export interface ClusterJobResult {
   eventsProcessed: number
@@ -54,7 +41,7 @@ type InsertedRow = { id: string }
  */
 export async function runClusterJob(opts?: ClusterJobOpts): Promise<ClusterJobResult> {
   const started = Date.now()
-  const threshold = getMatchMaxDistance(opts?.matchMaxDistance)
+  const threshold = opts?.matchMaxDistance ?? getMatchMaxDistance()
 
   let eventsProcessed = 0
   let detectionsClustered = 0

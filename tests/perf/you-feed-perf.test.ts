@@ -15,14 +15,22 @@
 import { sql } from 'drizzle-orm'
 import { afterAll, beforeAll, expect, test } from 'vitest'
 import { db } from '@/db'
-import { eventMembers, events, faceDetections, photos, users } from '@/db/schema'
+import {
+  eventMembers,
+  events,
+  faceDetections,
+  photos,
+  userFaceEmbeddings,
+  users,
+} from '@/db/schema'
+import { FACE_SCAN_ANGLES } from '@/lib/auth/face-enrollment'
 import { listYouFeed } from '@/lib/photos/you-feed'
 
-// 128-d unit vector with the hot component at position `pos`.
+// 512-d unit vector with the hot component at position `pos`.
 // Cosine distance between unitVec(0) and unitVec(n>0) = 1.0 (orthogonal).
 // Cosine distance between unitVec(0) and unitVec(0)   = 0.0 (identical).
 function unitVec(pos: number): number[] {
-  const v = new Array(128).fill(0)
+  const v = new Array(512).fill(0)
   v[pos] = 1.0
   return v
 }
@@ -32,7 +40,9 @@ let eventId: string
 let ownerEmbedding: number[]
 
 beforeAll(async () => {
-  // Owner with face enrolled at unitVec(0)
+  // Owner with face enrolled at unitVec(0). Seed all 3 angles with the same
+  // vector — listYouFeed's LEAST(d,d,d)=d collapses identical seeds to one
+  // effective embedding so the perf shape matches a single-embedding match.
   ownerEmbedding = unitVec(0)
   const [owner] = await db
     .insert(users)
@@ -40,9 +50,18 @@ beforeAll(async () => {
       name: 'PerfOwner',
       contact: 'perf_owner@perf.test',
       contactType: 'email',
-      faceEmbedding: ownerEmbedding,
     })
     .returning()
+  for (const angle of FACE_SCAN_ANGLES) {
+    await db.insert(userFaceEmbeddings).values({
+      userId: owner.id,
+      angle,
+      embedding: ownerEmbedding,
+      qualityScore: 90,
+      yaw: angle === 'left' ? -0.25 : angle === 'right' ? 0.25 : 0,
+      previewR2Key: `enrollment/${owner.id}/${angle}.jpg`,
+    })
+  }
 
   // Pocket (personal visibility)
   const [event] = await db
@@ -97,6 +116,7 @@ afterAll(async () => {
   // Clean up perf test data without disturbing other test state.
   await db.delete(faceDetections)
   await db.delete(photos)
+  await db.delete(userFaceEmbeddings)
   await db.delete(eventMembers)
   await db.delete(events)
   await db.delete(users)
@@ -104,7 +124,7 @@ afterAll(async () => {
 
 test('listYouFeed runs < 1500ms with 100 detections in pocket', async () => {
   const t0 = performance.now()
-  const results = await listYouFeed(eventId, ownerEmbedding)
+  const results = await listYouFeed(eventId, [ownerEmbedding])
   const elapsed = performance.now() - t0
 
   console.log(

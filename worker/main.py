@@ -8,7 +8,7 @@ Routes:
   POST /enroll   — stub, returns 501 (Phase 4)
 
 Startup:
-  Loads det_10g.onnx and face_recognition_sface_2021dec.onnx from
+  Loads det_10g.onnx and w600k_r50.onnx (ArcFace R50) from
   WORKER_MODELS_DIR (default /models).  Fails fast if models are missing —
   emits worker.startup.model_load_failed and re-raises so uvicorn exits non-zero.
   Model SHA-256 hashes and the resolved concurrency setting are computed once

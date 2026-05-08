@@ -1,8 +1,8 @@
 {
-  "match_max_distance": 0.528,
-  "maybe_max_distance": 0.595,
-  "_source_report": "bench/reports/20260503T010115Z-wedding-face-crops/labeled_report.md",
-  "_dataset_size": "8 identities × 5 photos = 40 face crops (LFW only)",
-  "_eval_date": "2026-05-03",
-  "_decision_doc": "docs/ops/threshold-decision-2026-04.md"
+  "match_max_distance": 0.55,
+  "maybe_max_distance": 0.60,
+  "_eval_date": "2026-05-07",
+  "_decision_doc": "docs/ops/threshold-decision-2026-05.md",
+  "_status": "PLACEHOLDER — empirical re-tune required before production cutover",
+  "_note": "ArcFace R50 (w600k_r50.onnx) replaces SFace as of 2026-05-07. The previous 0.92 SFace stop-gap is numerically incomparable to ArcFace cosine distances. 0.55 is the operating-point neighborhood for L2-normalized R50 embeddings on Glint360K (typical same-identity max ~0.45, different-identity min ~0.65). MUST re-run phostro-bench eval-labeled + founder dogfood pairs and update via the threshold-decision doc before deploying. The MATCH_MAX_DISTANCE env var on Fly + Vercel must stay in lockstep with this file."
 }

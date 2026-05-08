@@ -9,18 +9,18 @@ function normalize(v: number[]): number[] {
   return v.map((x) => x / mag)
 }
 
-// Helper: build a 128-d vector that is mostly zeros with one value at position `pos`
+// Helper: build a 512-d vector that is mostly zeros with one value at position `pos`
 function unitVec(pos: number): number[] {
-  const v = new Array(128).fill(0)
+  const v = new Array(512).fill(0)
   v[pos] = 1.0
   return v // already unit length
 }
 
 // Helper: build near-identical embeddings (tiny perturbations around [0.5, 0.5, ...])
 function nearIdentical(seed: number): number[] {
-  const base = new Array(128).fill(0.5)
-  // perturb dimension `seed % 128` slightly
-  base[seed % 128] += 0.001 * (seed + 1)
+  const base = new Array(512).fill(0.5)
+  // perturb dimension `seed % 512` slightly
+  base[seed % 512] += 0.001 * (seed + 1)
   return normalize(base)
 }
 
@@ -199,8 +199,8 @@ test('C5: running mean produces correct representative_embedding for 2 similar d
   const e = await seedEvent(u.id, 'c5')
   const p = await seedPhoto(e.id, u.id)
 
-  const emb1 = normalize([1, 0, ...new Array(126).fill(0)])
-  const emb2 = normalize([0.95, 0.05, ...new Array(126).fill(0)])
+  const emb1 = normalize([1, 0, ...new Array(510).fill(0)])
+  const emb2 = normalize([0.95, 0.05, ...new Array(510).fill(0)])
 
   await seedDetection(p.id, emb1)
   await seedDetection(p.id, emb2)
@@ -218,7 +218,7 @@ test('C5: running mean produces correct representative_embedding for 2 similar d
   expect(rep[0]).toBeCloseTo((emb1[0] + emb2[0]) / 2, 3)
   expect(rep[1]).toBeCloseTo((emb1[1] + emb2[1]) / 2, 3)
   // All other dims should remain 0
-  for (let i = 2; i < 128; i++) {
+  for (let i = 2; i < 512; i++) {
     expect(rep[i]).toBeCloseTo(0, 5)
   }
 })

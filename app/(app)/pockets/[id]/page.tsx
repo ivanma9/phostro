@@ -5,6 +5,7 @@ import { MintShareLink } from '@/components/MintShareLink'
 import { db } from '@/db'
 import { events } from '@/db/schema'
 import { getCurrentUser } from '@/lib/auth/current-user'
+import { getFaceEmbeddings, getFaceEnrollment } from '@/lib/auth/face-enrollment'
 import { createPresignedGetUrl } from '@/lib/photos/r2'
 import { listYouFeed } from '@/lib/photos/you-feed'
 
@@ -21,6 +22,8 @@ export default async function PocketPage({ params }: { params: Promise<{ id: str
 
   if (event.hostUserId !== user.id) redirect('/')
 
+  const enrollment = await getFaceEnrollment(user.id)
+
   let feedPhotos: Array<{
     photoId: string
     previewUrl: string
@@ -28,8 +31,9 @@ export default async function PocketPage({ params }: { params: Promise<{ id: str
     takenAt: Date | null
   }> = []
 
-  if (user.faceEmbedding) {
-    const items = await listYouFeed(event.id, user.faceEmbedding)
+  if (enrollment.enrolled) {
+    const embeddings = (await getFaceEmbeddings(user.id)).map((e) => e.embedding)
+    const items = await listYouFeed(event.id, embeddings)
     feedPhotos = await Promise.all(
       items.map(async (item) => ({
         photoId: item.photoId,
@@ -40,7 +44,8 @@ export default async function PocketPage({ params }: { params: Promise<{ id: str
     )
   }
 
-  const enrolled = Boolean(user.faceEmbedding)
+  const enrolled = enrollment.enrolled
+  const enrollHref = `/me/face/enroll?next=${encodeURIComponent(`/pockets/${id}`)}`
 
   return (
     <main className="mx-auto max-w-md p-6">
@@ -56,9 +61,15 @@ export default async function PocketPage({ params }: { params: Promise<{ id: str
 
         {!enrolled ? (
           <div className="space-y-2">
-            <p className="text-sm text-gray-500">Take a selfie to enable photo matching.</p>
-            <Link href="/pockets/new" className="inline-block rounded border px-3 py-2 text-sm">
-              Add your selfie
+            <p className="text-sm text-gray-500">
+              Set up face matching with a quick 3-angle scan
+              {enrollment.enrolledAngles.length > 0
+                ? ` (${enrollment.enrolledAngles.length} of 3 done)`
+                : ''}
+              .
+            </p>
+            <Link href={enrollHref} className="inline-block rounded border px-3 py-2 text-sm">
+              {enrollment.enrolledAngles.length > 0 ? 'Continue your scan' : 'Start face scan'}
             </Link>
           </div>
         ) : feedPhotos.length === 0 ? (

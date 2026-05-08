@@ -356,7 +356,7 @@ async function main(): Promise<void> {
     // ── Step 6: Run the filter ────────────────────────────────────────────────
     header('Step 6: listYouFeed (SQL vector filter)')
 
-    const feedItems = await listYouFeed(event.id, ownerEmbedding)
+    const feedItems = await listYouFeed(event.id, [ownerEmbedding])
     console.log(`  filter returned ${feedItems.length} photos`)
 
     // ── Step 7: Assert precision (HARD GATE) ──────────────────────────────────

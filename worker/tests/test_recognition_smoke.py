@@ -61,7 +61,7 @@ def test_detect_and_embed_group_shot() -> None:
       - worker/tests/data/group_03.jpg  (public-domain group photo, ≥2 faces)
       - $WORKER_MODELS_DIR pointing at a directory containing:
           det_10g.onnx
-          face_recognition_sface_2021dec.onnx
+          w600k_r50.onnx
     """
     import cv2
     import numpy as np
@@ -84,6 +84,6 @@ def test_detect_and_embed_group_shot() -> None:
     embedder = load_embedder(models_dir)
     aligned = align_face(image, faces[0].landmarks)
     embedding = embedder.embed(aligned)
-    assert embedding.shape == (128,), f"Expected (128,), got {embedding.shape}"
+    assert embedding.shape == (512,), f"Expected (512,), got {embedding.shape}"
     # L2-normalized: norm should be ~1.0
     assert abs(float(np.linalg.norm(embedding)) - 1.0) < 1e-5

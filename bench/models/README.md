@@ -4,8 +4,8 @@ The harness expects two ONNX model files in this directory:
 
 ```
 bench/models/
-  det_10g.onnx          # face detection (RetinaFace / InsightFace)
-  face_recognition_sface_2021dec.onnx   # face recognition (SFace)
+  det_10g.onnx     # face detection (RetinaFace / InsightFace)
+  w600k_r50.onnx   # face recognition (ArcFace R50, 512-d, InsightFace buffalo_l)
 ```
 
 ---
@@ -43,21 +43,20 @@ print('copied')
 
 ---
 
-## Face Recognition — `face_recognition_sface_2021dec.onnx`
+## Face Recognition — `w600k_r50.onnx`
 
-**Model:** OpenCV Zoo SFace
+**Model:** InsightFace ArcFace R50 (Glint360K, 512-d L2-normalized embeddings)
+
+**Why this over SFace:** SFace (128-d, 2021) underperforms on accessories like glasses (founder dogfood 2026-05-07: self-with-glasses cosine distance 0.903 vs not-self at 0.981 — only 0.078 of margin). ArcFace R50 trained on Glint360K with substantial augmentation handles accessories and pose variance much better.
 
 **Download:**
 
-```bash
-curl --retry 3 -fL -o bench/models/face_recognition_sface_2021dec.onnx \
-  https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx
-```
+`w600k_r50.onnx` ships in the same `buffalo_l` insightface pack as `det_10g.onnx`, so a single Option A run populates both models. `worker/scripts/download_models.sh` automates the pip-extraction with SHA-256 verification for both.
 
-Or run `worker/scripts/download_models.sh` which downloads both models with SHA-256 verification.
-
-**Expected filename:** `face_recognition_sface_2021dec.onnx`  
-**Expected file size:** ~37 MB
+**Expected filename:** `w600k_r50.onnx`
+**Expected file size:** ~166 MB
+**SHA-256:** `4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43`
+**Embedding dim:** 512 (L2-normalized; cosine distance metric)
 
 ---
 

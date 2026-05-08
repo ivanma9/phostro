@@ -1,21 +1,34 @@
 import { randomUUID } from 'node:crypto'
-import { eq } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
 import { db } from '@/db'
-import { users } from '@/db/schema'
+import { userFaceEmbeddings } from '@/db/schema'
+import {
+  detectTooSimilar,
+  getFaceEmbeddings,
+  getFaceEnrollment,
+  isFaceScanAngle,
+  validatePoseForAngle,
+  type FaceScanAngle,
+} from '@/lib/auth/face-enrollment'
 import { getCurrentUser } from '@/lib/auth/current-user'
 import { MAX_UPLOAD_BYTES } from '@/lib/photos/keys'
 import { ImageProcessError, processImage } from '@/lib/photos/process'
 import { deleteObject, getObjectBuffer, headObject, putObject } from '@/lib/photos/r2'
 import { detectPhoto } from '@/lib/worker/client'
 
-// Companion to /api/me/face/init. Client posts the R2 key it uploaded to;
-// server fetches the bytes from R2, runs Sharp + worker /detect, and writes
-// users.face_embedding. Mirrors the legacy /api/me/face logic but takes a key
-// instead of a multipart body.
+// Multi-angle face scan finalize (v1).
+// Companion to /api/me/face/init. Body: { key, angle }.
+// Server: fetch from R2 → Sharp processImage → worker /detect (returns yaw) →
+// pose-vs-claimed-angle check → similarity-vs-existing-angles gate → UPSERT into
+// user_face_embeddings keyed on (user_id, angle). Returns enrollment status.
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
+
+function emit(event: string, data: Record<string, unknown>): void {
+  console.log(JSON.stringify({ event, ...data }))
+}
 
 export async function POST(req: Request): Promise<Response> {
   const user = await getCurrentUser()
@@ -23,21 +36,23 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
   }
 
-  const body = (await req.json().catch(() => null)) as { key?: unknown } | null
+  const body = (await req.json().catch(() => null)) as
+    | { key?: unknown; angle?: unknown }
+    | null
   if (!body) {
     return NextResponse.json({ error: 'invalid_body' }, { status: 400 })
   }
   const key = typeof body.key === 'string' ? body.key : ''
-  // Authorize: caller can only finalize keys under their own enrollment-pending prefix
+  const angle = body.angle
+  if (!isFaceScanAngle(angle)) {
+    return NextResponse.json({ error: 'invalid_angle' }, { status: 400 })
+  }
+
   const expectedPrefix = `enrollment-pending/${user.id}/`
   if (!key.startsWith(expectedPrefix)) {
     return NextResponse.json({ error: 'invalid_key' }, { status: 400 })
   }
 
-  // Verify the uploaded object actually exists and is within size limits.
-  // Init validates the *claimed* sizeBytes from the JSON body, but a presigned
-  // PUT URL does not enforce object size — a malicious or buggy client can PUT
-  // gigabytes. Head the object before pulling it into a Buffer to bound memory.
   const head = await headObject(key)
   if (!head) {
     return NextResponse.json({ error: 'upload_not_found' }, { status: 404 })
@@ -65,43 +80,41 @@ export async function POST(req: Request): Promise<Response> {
     throw e
   }
 
-  // Upload the processed preview to a stable enrollment/ key — this is what
-  // the worker will read via presigned GET.
-  const enrollmentKey = `enrollment/${user.id}/${Date.now()}.jpg`
+  // Stable per-angle preview key for audit / re-enrollment workflows.
+  const enrollmentKey = `enrollment/${user.id}/${angle}-${Date.now()}.jpg`
   await putObject(enrollmentKey, previewJpeg, 'image/jpeg')
-
-  // Best-effort delete of the raw upload — keep enrollment-pending/ tidy.
-  await deleteObject(key).catch(() => {
-    // Lifecycle rule will clean this up if delete races; not worth surfacing.
-  })
+  await deleteObject(key).catch(() => {})
 
   const diagnosticPhotoId = randomUUID()
   let detect: Awaited<ReturnType<typeof detectPhoto>>
   try {
     detect = await detectPhoto(diagnosticPhotoId, enrollmentKey)
-  } catch {
+  } catch (e) {
+    emit('face.enroll.worker_call_failed', {
+      userId: user.id,
+      angle,
+      error: e instanceof Error ? e.message : String(e),
+    })
     return NextResponse.json({ error: 'worker_unavailable' }, { status: 503 })
   }
 
-  // Compute debug info we want to surface on every response (success or failure)
-  // so the user can see what RetinaFace actually thought of their selfie.
   const detected = detect.faces.length
   const topConfidence =
     detected > 0 ? Math.round(detect.faces[0].confidence * 100) : null
 
   if (detect.faces.length > 1) {
+    emit('face.enroll.angle.reject_multiple', { userId: user.id, angle, detected })
     return NextResponse.json(
-      { error: 'multiple_faces', detected, topConfidence },
+      { error: 'multiple_faces', angle, detected, topConfidence },
       { status: 400 },
     )
   }
   // Confidence threshold lowered from 0.9 → 0.6 for v0 dogfood. RetinaFace
-  // returns 0.7-0.85 for many real selfies (angle, lighting, glasses). 0.9 was
-  // a placeholder and rejected too many valid enrollments. Revisit at v1 with
-  // labeled-bench data.
+  // returns 0.7-0.85 for many real selfies; revisit on Phase-4 retune.
   if (detect.faces.length === 0 || detect.faces[0].confidence <= 0.6) {
+    emit('face.enroll.angle.reject_no_face', { userId: user.id, angle, detected })
     return NextResponse.json(
-      { error: 'no_face', detected, topConfidence },
+      { error: 'no_face', angle, detected, topConfidence },
       { status: 400 },
     )
   }
@@ -109,14 +122,82 @@ export async function POST(req: Request): Promise<Response> {
   const face = detect.faces[0]
   const qualityScore = Math.round(face.confidence * 100)
 
-  await db
-    .update(users)
-    .set({
-      faceEmbedding: face.embedding,
-      faceQualityScore: qualityScore,
-      faceEnrolledAt: new Date(),
+  // Pose-vs-claimed-angle gate from RetinaFace landmarks. Without this, a user
+  // could tap "left" three times while looking forward and get three near-identical
+  // embeddings — defeating the purpose of multi-angle enrollment.
+  const pose = validatePoseForAngle(angle, face.yaw)
+  if (!pose.ok) {
+    emit('face.enroll.angle.reject_wrong_pose', {
+      userId: user.id,
+      angle,
+      yaw: face.yaw,
+      expected: pose.expected,
     })
-    .where(eq(users.id, user.id))
+    return NextResponse.json(
+      { error: 'wrong_pose', angle, yaw: face.yaw, expected: pose.expected, topConfidence },
+      { status: 400 },
+    )
+  }
 
-  return NextResponse.json({ quality: qualityScore })
+  // Belt-and-suspenders: reject if the new embedding is suspiciously close to
+  // every other angle the user has already enrolled.
+  const existing = (await getFaceEmbeddings(user.id)).filter((e) => e.angle !== angle)
+  const tooSimilar = detectTooSimilar(face.embedding, existing)
+  if (tooSimilar) {
+    emit('face.enroll.angle.reject_too_similar', {
+      userId: user.id,
+      angle,
+      yaw: face.yaw,
+      distances: tooSimilar.distances,
+    })
+    return NextResponse.json(
+      {
+        error: 'too_similar_to_existing',
+        angle,
+        yaw: face.yaw,
+        distances: tooSimilar.distances,
+      },
+      { status: 400 },
+    )
+  }
+
+  // UPSERT keyed on (user_id, angle).
+  await db
+    .insert(userFaceEmbeddings)
+    .values({
+      userId: user.id,
+      angle,
+      embedding: face.embedding,
+      qualityScore,
+      yaw: face.yaw,
+      previewR2Key: enrollmentKey,
+    })
+    .onConflictDoUpdate({
+      target: [userFaceEmbeddings.userId, userFaceEmbeddings.angle],
+      set: {
+        embedding: face.embedding,
+        qualityScore,
+        yaw: face.yaw,
+        previewR2Key: enrollmentKey,
+        enrolledAt: sql`now()`,
+      },
+    })
+
+  const status = await getFaceEnrollment(user.id)
+  emit('face.enroll.angle.success', {
+    userId: user.id,
+    angle,
+    qualityScore,
+    yaw: face.yaw,
+    enrolledAngles: status.enrolledAngles,
+  })
+
+  return NextResponse.json({
+    angle,
+    quality: qualityScore,
+    yaw: face.yaw,
+    enrolled: status.enrolled,
+    enrolledAngles: status.enrolledAngles,
+    remainingAngles: status.remainingAngles,
+  })
 }
