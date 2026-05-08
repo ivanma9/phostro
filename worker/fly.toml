@@ -9,12 +9,15 @@ primary_region = "iad"
 [http_service]
   internal_port = 8000
   force_https = true
-  # Keep one machine always running during preview dogfood — cold start
-  # races with Fly's proxy timeout (~8s) and ONNX load takes 5-15s.
-  # Revisit at v1: scale-to-zero with prewarm endpoint, or accept the cold-start.
-  auto_stop_machines = "off"
+  # Scale-to-zero with suspend: machine pauses on idle, wakes on request.
+  # Cron-driven dispatch only calls /detect when a job exists in the queue
+  # (claimNextJob returns null on empty), so an idle queue costs nothing.
+  # First cron tick after a cold period burns one cycle on the wake (~5-15s ONNX
+  # load); the next tick (60s later) succeeds against the warm machine. The
+  # job-retry path handles the lost tick automatically.
+  auto_stop_machines = "suspend"
   auto_start_machines = true
-  min_machines_running = 1
+  min_machines_running = 0
   processes = ["app"]
 
   [[http_service.checks]]
