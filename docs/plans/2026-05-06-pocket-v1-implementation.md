@@ -143,6 +143,33 @@ Not on the list (intentional): notifications beyond first-match; "maybe you" tie
 
 **Files:** `app/p/[token]/page.tsx`, `app/api/p/[token]/finalize/[photoId]/route.ts`, `app/pockets/[id]/page.tsx`. Optional one-line "Your name (optional)" input on contributor page; persists to `photos.contributor_display_name`. Owner pocket page renders attribution under each tile. Verification: Playwright spec uploads one named and one anonymous contribution; both render correctly. `[depends on v0 self-use postmortem — drop the task if attribution wasn't missed]`
 
+### Task 5b — Optional "alternate look" enrollment angle
+
+**Why this exists:** The 2026-05-08 self-use dogfood (`docs/postmortems/pocket-v0-self-use.md`) exposed that multi-angle ArcFace + 3 angles (frontal/left/right) does NOT close the glasses gap. A self-photo with glasses landed at cosine distance 0.858 — indistinguishable from a non-self photo at 0.859. Multi-angle enrollment trains the embedding on yaw variation, not appearance variation. For users who wear glasses, hats, makeup, or have noticeably different hair/style across their social photos, recall caps at ~67% on their own photos.
+
+**Files:**
+- Modify: `lib/auth/face-enrollment.ts` — extend the `FaceScanAngle` enum to include `'alt'` (or a more descriptive name; bikeshed at implementation). Update the `(user_id, angle)` PK story to allow this fourth row. Migration: extend the `user_face_embeddings_angle_check` CHECK constraint to include the new value.
+- Modify: `app/(app)/me/face/enroll/page.tsx` — after the 3 mandatory angles complete, surface a fourth optional step: "If you wear glasses (or have a different look you'd like recognized), add a photo of that too." A single button, skippable.
+- Modify: `lib/photos/you-feed.ts` — already iterates over all rows in `user_face_embeddings` and takes MIN distance; no change needed if the schema accepts the new value.
+- Modify: `app/api/me/face/finalize/route.ts` — bypass the pose-vs-claimed-angle yaw gate for the `'alt'` angle (the user is intentionally enrolling a "different look" frontally; pose validation doesn't apply). Keep the `detectTooSimilar` check.
+- Modify: `worker/recognition/detect.py` (Python) — no change needed. Yaw is returned but only used by the Next.js validator.
+
+**UX scope:**
+- Opt-in only. The default 3 angles stay mandatory; the 4th is a soft nudge after success ("This catches you wearing glasses or a hat. Skip if you don't need it.")
+- One alternate look only in v1 (not multiple variants). Multiple variants is v2 if the dogfood data shows a need.
+- The alternate-look enrollment shows the same uploaded preview during validation so the user can confirm "yes that's the look I want recognized."
+
+**Verification:**
+- Bench: re-test the glasses photo from the 2026-05-08 dogfood. Ground truth says it's the user; with `'alt'` enrollment, distance should drop below threshold. (If it doesn't, the embedding-level gap is real and we need a different model — flag for v2.)
+- Playwright e2e: enroll 3 angles, then enroll the 4th, then upload a photo of the user-with-alternate-look and assert it lands in the You feed.
+- Unit test: `detectTooSimilar` doesn't fire on the 4th angle vs the 3 base angles even though appearance differs (because it should — different appearance = different embedding = far enough).
+
+**Don't do in v1:**
+- Multi-variant looks (wearing-mask, with-beard, etc.). Ship one alt slot; if usage data shows multi-variant demand, that's v2.
+- "Auto-detect glasses and prompt" — the prompt is unconditional. Users who don't wear glasses will skip; users who do will tap through. Don't try to be clever about who needs it.
+
+`[ranked highest in postmortem — ship before any non-founder beta]`
+
 ### Task 6 — Pocket auto-expiry + cleanup cron
 
 **Files:** `app/api/cron/expire/route.ts`, `lib/cleanup/expire-pocket.ts`, `lib/r2/delete-prefix.ts`, `db/schema.ts` (add `cleanup_runs`), `vercel.json`, `tests/cleanup/expire-pocket.test.ts`. Lift Phase 6 Task 5. Pocket-scoped: deletes `photo_saves`, `face_detections`, `face_clusters`, `photo_jobs`, `share_links`, `photos`, then the `events` row, plus R2 prefix purge. **Auto-expiry is 7 days** per the schema's existing `lifespan_days` default and the original design doc — no migration, just confirm no code path overrides the default and the cron filter is `expires_at < now()`. Verification: integration test against MinIO; staging dry run on a synthetic expired pocket; check that `pocket creation → 7 days later → cron sweep → fully cleaned` round-trips cleanly with a clock fixture.
