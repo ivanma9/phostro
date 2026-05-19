@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm'
+import { and, desc, eq, gt, isNotNull, isNull, sql } from 'drizzle-orm'
 import { db } from '@/db'
 import { shareLinks } from '@/db/schema'
 import { generateToken, hashToken } from './token'
@@ -27,6 +27,7 @@ export async function mintShareLink(
     .values({
       eventId,
       tokenHash,
+      token,
       expiresAt: opts.expiresAt,
       maxUploads: opts.maxUploads ?? null,
     })
@@ -119,4 +120,40 @@ export async function revokeShareLink(linkId: string): Promise<void> {
     .update(shareLinks)
     .set({ revokedAt: new Date() })
     .where(eq(shareLinks.id, linkId))
+}
+
+/**
+ * Returns the most-recent non-revoked, non-expired share link for the event that
+ * has a persisted plaintext token (rows minted before the 0009 migration won't have
+ * one and are skipped). Returns null when no such link exists.
+ */
+export async function getActiveShareLinkUrl(
+  eventId: string,
+  appUrl: string,
+): Promise<{ url: string; remaining: string | null } | null> {
+  const [row] = await db
+    .select({
+      token: shareLinks.token,
+      maxUploads: shareLinks.maxUploads,
+      uploadCount: shareLinks.uploadCount,
+    })
+    .from(shareLinks)
+    .where(
+      and(
+        eq(shareLinks.eventId, eventId),
+        isNull(shareLinks.revokedAt),
+        gt(shareLinks.expiresAt, sql`now()`),
+        isNotNull(shareLinks.token),
+      ),
+    )
+    .orderBy(desc(shareLinks.createdAt))
+    .limit(1)
+
+  if (!row?.token) return null
+
+  const url = `${appUrl}/p/${row.token}`
+  const remaining =
+    row.maxUploads != null ? `${row.uploadCount} / ${row.maxUploads}` : null
+
+  return { url, remaining }
 }

@@ -4,11 +4,12 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { MintShareLink } from '@/components/MintShareLink'
 import { db } from '@/db'
-import { events, photoJobs, photos, shareLinks } from '@/db/schema'
+import { events, photoJobs, photos } from '@/db/schema'
 import { getCurrentUser } from '@/lib/auth/current-user'
 import { getFaceEmbeddings, getFaceEnrollment } from '@/lib/auth/face-enrollment'
 import { createPresignedGetUrl } from '@/lib/photos/r2'
 import { listYouFeed } from '@/lib/photos/you-feed'
+import { getActiveShareLinkUrl } from '@/lib/share-links/storage'
 import { AppBar } from '@/components/ui/AppBar'
 import { Eyebrow } from '@/components/ui/Eyebrow'
 import { LiveCountdown } from '@/components/ui/LiveCountdown'
@@ -118,28 +119,12 @@ export default async function PocketPage({ params }: { params: Promise<{ id: str
     day: 'numeric',
   })
 
-  // Fetch the most recent active share link to drive ShareBlock url + remaining count.
-  // We only query for display — minting/revoking happens client-side via MintShareLink.
-  const [activeShareLink] = await db
-    .select({
-      id: shareLinks.id,
-      tokenHash: shareLinks.tokenHash,
-      maxUploads: shareLinks.maxUploads,
-      uploadCount: shareLinks.uploadCount,
-      revokedAt: shareLinks.revokedAt,
-    })
-    .from(shareLinks)
-    .where(eq(shareLinks.eventId, event.id))
-    .orderBy(desc(shareLinks.createdAt))
-    .limit(1)
-
-  // Build remaining string: "uploadCount / maxUploads" when maxUploads is set
-  // TODO: expose the share token plaintext via a separate lookup so we can build
-  // the full share URL here. For now fall through to the MintShareLink children slot.
-  const remainingStr =
-    activeShareLink?.maxUploads != null
-      ? `${activeShareLink.uploadCount} / ${activeShareLink.maxUploads}`
-      : undefined
+  // Fetch the most recent active share link URL (uses persisted plaintext token from
+  // 0009 migration). Falls back to null for links minted before the migration.
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+  const activeLink = await getActiveShareLinkUrl(event.id, appUrl)
+  const shareLinkUrl = activeLink?.url
+  const remainingStr = activeLink?.remaining ?? undefined
 
   const photoCount = feedPhotos.length + otherPhotos.length
 
@@ -327,12 +312,11 @@ export default async function PocketPage({ params }: { params: Promise<{ id: str
       <div style={{ padding: '22px 20px 0' }}>
         <Eyebrow>Share your pocket</Eyebrow>
         <div style={{ marginTop: 10 }}>
-          {/* ShareBlock renders `children` slot when no URL is available yet.
-              MintShareLink mints + copies a share URL client-side. The page reloads
-              after mint so the host sees the QR on next visit. For Phase 6 we keep
-              the simpler slot pattern — wiring SSR'd share URL requires exposing
-              the plaintext token, which needs a separate lookup (TODO). */}
-          <ShareBlock remaining={remainingStr}>
+          {/* When a live share link exists its URL is reconstructed server-side from
+              the persisted plaintext token (0009 migration). ShareBlock renders the
+              QR + URL pill immediately. When no link exists (never minted, or minted
+              before 0009), the children slot falls through to MintShareLink. */}
+          <ShareBlock url={shareLinkUrl} remaining={remainingStr}>
             <MintShareLink pocketId={event.id} />
           </ShareBlock>
         </div>

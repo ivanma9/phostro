@@ -338,7 +338,10 @@ export const faceDetectionsV2 = pgTable(
 )
 
 // Share links let Pocket owners hand a token URL to contributors who upload without
-// auth. Token plaintext is shown to the user once; only token_hash is stored.
+// auth. Token plaintext is stored alongside the hash so the host can see the QR on
+// revisit. The token is a capability URL — scoped to one event, capped by max_uploads,
+// revokable, and expiry-bounded. Storing plaintext is equivalent in threat model to
+// Loom/Linear share links; DB-read leaks yield upload-only access to one event.
 // Verification: lookup by hash, check revoked_at IS NULL, expires_at > now(),
 // upload_count < max_uploads (or max_uploads IS NULL = unlimited).
 export const shareLinks = pgTable(
@@ -349,6 +352,9 @@ export const shareLinks = pgTable(
       .notNull()
       .references(() => events.id, { onDelete: 'cascade' }),
     tokenHash: text('token_hash').notNull(),
+    // Plaintext token persisted so the host can reconstruct the share URL on revisit.
+    // Nullable for backward compatibility with rows minted before this migration.
+    token: text('token'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     expiresAt: timestamp('expires_at').notNull(),
     revokedAt: timestamp('revoked_at'),
