@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { Icon } from '@/components/ui/Icon'
 
 type Angle = 'frontal' | 'left' | 'right'
 const ANGLE_ORDER: Angle[] = ['frontal', 'left', 'right']
@@ -288,9 +289,39 @@ export function FaceScanEnroll() {
 
   if (phase.kind === 'all_done') {
     return (
-      <div className="space-y-3 text-center">
-        <p className="text-lg font-medium">All set — face scan complete.</p>
-        <p className="text-sm text-gray-500">Redirecting…</p>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 12,
+          padding: '32px 0',
+          textAlign: 'center',
+        }}
+      >
+        <div
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 99,
+            background: 'var(--t-fresh-bg)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'var(--t-fresh)',
+          }}
+        >
+          <Icon name="check" size={28} />
+        </div>
+        <p
+          className="display"
+          style={{ fontSize: 24, lineHeight: 1.1, margin: 0 }}
+        >
+          You&apos;re set
+        </p>
+        <p style={{ fontSize: 13, color: 'var(--muted)', margin: 0 }}>
+          Redirecting…
+        </p>
       </div>
     )
   }
@@ -300,84 +331,175 @@ export function FaceScanEnroll() {
   const stepNumber = current ? ANGLE_ORDER.indexOf(current) + 1 : 1
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-1 text-xs text-gray-500">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Step tracker */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+        }}
+      >
         {ANGLE_ORDER.map((a) => {
           const done = enrolledAngles.includes(a)
           const isCurrent = a === current
           return (
             <span
               key={a}
-              className={`flex h-6 items-center rounded px-2 ${
+              className={done ? 'chip chip-fresh' : 'chip'}
+              style={
                 done
-                  ? 'bg-black text-white'
+                  ? { display: 'inline-flex', alignItems: 'center', gap: 4 }
                   : isCurrent
-                    ? 'border border-black text-black'
-                    : 'border border-gray-200 text-gray-400'
-              }`}
+                    ? {
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        border: '1.5px solid var(--ink)',
+                        color: 'var(--ink)',
+                        background: 'transparent',
+                      }
+                    : {
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        border: '1px solid var(--rule)',
+                        color: 'var(--muted)',
+                        background: 'transparent',
+                      }
+              }
             >
-              {done ? '✓ ' : ''}
+              {done && (
+                <Icon name="check" size={11} style={{ marginRight: 2 }} />
+              )}
               {SHORT_BY_ANGLE[a]}
             </span>
           )
         })}
-        <span className="ml-2">Step {stepNumber} of 3</span>
+        <span
+          style={{
+            marginLeft: 8,
+            fontSize: 11,
+            color: 'var(--muted)',
+            fontFamily: 'var(--sans)',
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+          }}
+        >
+          Step {stepNumber} of 3
+        </span>
       </div>
 
-      <div className="text-center text-lg font-medium">
+      {/* Prompt heading */}
+      <p
+        className="display"
+        style={{
+          fontSize: 18,
+          lineHeight: 1.2,
+          margin: 0,
+          textAlign: 'center',
+        }}
+      >
         {current ? PROMPT_BY_ANGLE[current] : ''}
-      </div>
+      </p>
 
+      {/* Video preview */}
       {!cameraDenied && (
-        <div className="overflow-hidden rounded-xl bg-black">
+        <div
+          style={{
+            overflow: 'hidden',
+            borderRadius: 18,
+            background: 'var(--ink)',
+            border: '1px solid var(--rule)',
+          }}
+        >
           {/* biome-ignore lint/a11y/useMediaCaption: live camera preview, no caption track */}
           <video
             ref={videoRef}
             playsInline
             muted
-            className="aspect-square w-full object-cover"
-            style={{ transform: 'scaleX(-1)' }}
+            style={{
+              display: 'block',
+              width: '100%',
+              aspectRatio: '1/1',
+              objectFit: 'cover',
+              transform: 'scaleX(-1)',
+            }}
           />
         </div>
       )}
-      <canvas ref={canvasRef} className="hidden" />
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
 
+      {/* Camera unavailable notice */}
+      {cameraDenied && (
+        <div
+          style={{
+            display: 'flex',
+            gap: 10,
+            alignItems: 'flex-start',
+            padding: '12px 14px',
+            background: 'var(--t-warm-bg)',
+            border: '1px solid rgba(180,120,40,.25)',
+            borderRadius: 12,
+            color: 'var(--t-warm)',
+          }}
+        >
+          <Icon name="warn" size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+          <p style={{ fontSize: 13, lineHeight: 1.5, margin: 0 }}>
+            Camera not available. You can upload a photo instead — face the
+            direction the prompt asks for.
+          </p>
+        </div>
+      )}
+
+      {/* Error message */}
+      {lastError && (
+        <div
+          style={{
+            display: 'flex',
+            gap: 10,
+            alignItems: 'flex-start',
+            padding: '12px 14px',
+            background: 'var(--t-alarm-bg)',
+            border: '1px solid rgba(154,48,39,.25)',
+            borderRadius: 12,
+            color: 'var(--t-alarm)',
+          }}
+        >
+          <Icon name="warn" size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+          <p style={{ fontSize: 13, lineHeight: 1.5, margin: 0 }}>{lastError}</p>
+        </div>
+      )}
+
+      {/* Action button */}
       {!cameraDenied ? (
         <button
           type="button"
           disabled={phase.kind !== 'ready'}
           onClick={handleCameraCapture}
-          className="w-full rounded-xl bg-black py-4 text-lg font-semibold text-white active:opacity-80 disabled:opacity-40"
+          className="btn btn-primary btn-block"
+          style={{ minHeight: 52, fontSize: 16 }}
         >
           {phase.kind === 'capturing' ? 'Checking…' : 'Capture'}
         </button>
       ) : (
-        <div className="space-y-2">
-          <p className="rounded bg-yellow-50 p-3 text-sm text-yellow-800">
-            Camera not available. You can upload a photo instead — face the camera direction the
-            prompt asks for.
-          </p>
+        <>
           <input
             ref={fileInputRef}
             type="file"
             accept="image/*"
             capture="user"
-            className="hidden"
+            style={{ display: 'none' }}
             onChange={handleFilePick}
           />
           <button
             type="button"
             disabled={phase.kind !== 'ready'}
             onClick={() => fileInputRef.current?.click()}
-            className="w-full rounded-xl bg-black py-4 text-lg font-semibold text-white active:opacity-80 disabled:opacity-40"
+            className="btn btn-primary btn-block"
+            style={{ minHeight: 52, fontSize: 16 }}
           >
             {phase.kind === 'capturing' ? 'Checking…' : 'Choose photo'}
           </button>
-        </div>
-      )}
-
-      {lastError && (
-        <p className="rounded bg-red-50 p-3 text-sm text-red-700">{lastError}</p>
+        </>
       )}
     </div>
   )

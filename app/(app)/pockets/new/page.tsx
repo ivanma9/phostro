@@ -1,7 +1,11 @@
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { PocketCreateForm } from '@/components/PocketCreateForm'
 import { getCurrentUser } from '@/lib/auth/current-user'
 import { getFaceEnrollment } from '@/lib/auth/face-enrollment'
+import { AppBar } from '@/components/ui/AppBar'
+import { I } from '@/components/ui/Icon'
+import { ToastProvider } from '@/components/ui/Toast'
 
 export default async function NewPocketPage() {
   const user = await getCurrentUser()
@@ -12,10 +16,45 @@ export default async function NewPocketPage() {
   if (!enrollment.enrolled) {
     redirect('/me/face/enroll?next=/pockets/new')
   }
+
   return (
-    <main className="mx-auto max-w-md p-6">
-      <h1 className="mb-4 text-2xl font-semibold">New pocket</h1>
-      <PocketCreateForm />
-    </main>
+    <ToastProvider>
+      <div style={{ minHeight: '100dvh', background: 'var(--paper)' }}>
+        <AppBar
+          title="New pocket"
+          leading={
+            <Link
+              href="/"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 36,
+                height: 36,
+                borderRadius: 99,
+                background: 'none',
+                border: 0,
+                color: 'var(--ink)',
+                cursor: 'pointer',
+                textDecoration: 'none',
+              }}
+              aria-label="Back"
+            >
+              <I name="back" size={20} />
+            </Link>
+          }
+        />
+        <main
+          style={{
+            maxWidth: 440,
+            margin: '0 auto',
+            padding: '20px 20px 48px',
+            background: 'var(--paper)',
+          }}
+        >
+          <PocketCreateForm />
+        </main>
+      </div>
+    </ToastProvider>
   )
 }

@@ -29,7 +29,7 @@ export function MintShareLink({ pocketId }: { pocketId: string }) {
       type="button"
       onClick={mint}
       disabled={busy}
-      className="rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-60"
+      className="btn btn-primary btn-sm disabled:opacity-60"
     >
       {label}
     </button>
