@@ -20,9 +20,13 @@ export function ContributorFrame({
   eventName: string
   hostFirstName: string
 }) {
-  const [doneCount, setDoneCount] = useState<number | null>(null)
+  const [doneState, setDoneState] = useState<{
+    count: number
+    failures: Array<{ filename: string; reason: string }>
+  } | null>(null)
 
-  if (doneCount !== null) {
+  if (doneState !== null) {
+    const { count: doneCount, failures } = doneState
     return (
       <div style={{ padding: '0 20px' }}>
         <div style={{ textAlign: 'center', paddingBottom: 16 }}>
@@ -60,6 +64,31 @@ export function ContributorFrame({
           </p>
         </div>
 
+        {failures.length > 0 && (
+          <div
+            style={{
+              background: 'var(--t-alarm-bg)',
+              color: 'var(--t-alarm)',
+              padding: '12px 14px',
+              borderRadius: 10,
+              marginBottom: 16,
+            }}
+          >
+            <strong>
+              {failures.length} {failures.length === 1 ? 'photo' : 'photos'} couldn&rsquo;t upload
+            </strong>
+            <ul style={{ margin: '8px 0 0', padding: '0 0 0 18px', listStyle: 'disc' }}>
+              {failures.map((f) => (
+                <li key={f.filename} style={{ fontSize: 12.5, lineHeight: 1.6 }}>
+                  <span style={{ fontFamily: 'ui-monospace, monospace' }}>{f.filename}</span>
+                  {' — '}
+                  {f.reason}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {doneCount > 0 && (
           <div style={{ marginBottom: 16 }}>
             <div className="eyebrow" style={{ marginBottom: 8 }}>
@@ -96,7 +125,7 @@ export function ContributorFrame({
           type="button"
           className="btn btn-primary btn-block"
           style={{ minHeight: 52 }}
-          onClick={() => setDoneCount(null)}
+          onClick={() => setDoneState(null)}
         >
           <Icon name="plus" size={16} /> Add more photos
         </button>
@@ -151,7 +180,7 @@ export function ContributorFrame({
         <ContributorUpload
           token={token}
           hostFirstName={hostFirstName}
-          onDone={(added) => setDoneCount(added)}
+          onDone={(added, failures) => setDoneState({ count: added, failures })}
         />
       </div>
     </div>

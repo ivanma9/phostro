@@ -17,7 +17,7 @@ export function ContributorUpload({
   token: string
   hostFirstName?: string
   /** Called when the upload finishes so the parent can unmount the dropzone card. */
-  onDone?: (added: number) => void
+  onDone?: (added: number, failures: Array<{ filename: string; reason: string }>) => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const captureRef = useRef<HTMLInputElement>(null)
@@ -42,9 +42,12 @@ export function ContributorUpload({
     )
 
     const added = results.filter((r) => r.ok).length
+    const failures = results
+      .map((r, idx) => (!r.ok ? { filename: accepted[idx]?.name ?? '?', reason: r.reason } : null))
+      .filter((x): x is { filename: string; reason: string } => x !== null)
     // Transition back to idle and let parent's onDone swap in its own done UI.
     setPhase({ kind: 'idle' })
-    onDone?.(added)
+    onDone?.(added, failures)
   }
 
   // ── Uploading state ──────────────────────────────────────────────────────────
