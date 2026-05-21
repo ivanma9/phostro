@@ -329,6 +329,14 @@
   .flex-1 { flex: 1; }
   .muted { color: var(--muted); }
   .ink-soft { color: var(--ink-soft); }
+
+  /* ShareBlock responsive layout */
+  .share-block { grid-template-columns: auto 1fr; }
+  @media (max-width: 480px) {
+    .share-block { grid-template-columns: 1fr; justify-items: center; }
+    .share-block .share-block-qr { margin: 0 auto; }
+    .share-block > div:last-child { width: 100%; }
+  }
 }
 
 @keyframes skel { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }

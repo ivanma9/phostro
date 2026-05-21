@@ -52,6 +52,7 @@ export function ShareBlock({
 
   return (
     <div
+      className="share-block"
       style={{
         background: revoked ? 'var(--t-alarm-bg)' : 'var(--paper-2)',
         border: '1px solid ' + (revoked ? 'rgba(154,48,39,.25)' : 'var(--rule)'),
@@ -64,6 +65,7 @@ export function ShareBlock({
       }}
     >
       <div
+        className="share-block-qr"
         style={{
           width: 168,
           height: 168,
