@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Pocket — Editorial (Owner)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --paper: #fbfaf6;
+        --ink: #1a1a1a;
+        --muted: #6b6862;
+        --rule: #e8e4d8;
+        --accent: #b54820;
+      }
+      body {
+        background: var(--paper);
+        color: var(--ink);
+        font-family: 'Inter', system-ui, sans-serif;
+      }
+      .display {
+        font-family: 'Fraunces', Georgia, serif;
+        font-feature-settings: 'ss01', 'ss02';
+      }
+      .rule {
+        border-color: var(--rule);
+      }
+      .number {
+        font-family: 'Fraunces', Georgia, serif;
+        font-variant-numeric: tabular-nums oldstyle-nums;
+        letter-spacing: -0.02em;
+      }
+    </style>
+  </head>
+  <body class="min-h-screen">
+    <main class="mx-auto w-full max-w-3xl px-8 py-10">
+      <header class="flex items-baseline justify-between border-b rule pb-3">
+        <span class="display text-lg italic" style="color: var(--accent)">Pocket</span>
+        <button
+          class="rounded-none border px-4 py-2 text-xs uppercase tracking-[0.18em]"
+          style="border-color: var(--ink); color: var(--ink)"
+        >
+          Get share link
+        </button>
+      </header>
+
+      <section class="grid grid-cols-12 gap-6 pt-12 pb-10 border-b rule">
+        <div class="col-span-8">
+          <p class="text-[11px] uppercase tracking-[0.22em]" style="color: var(--muted)">
+            A pocket of memories
+          </p>
+          <h1 class="display mt-3 text-[56px] leading-[1.0] tracking-tight">
+            Mason&rsquo;s<br /><em class="italic" style="color: var(--accent)">birthday</em>
+          </h1>
+        </div>
+        <div class="col-span-4 flex flex-col items-end justify-end text-right">
+          <span class="number text-[64px] leading-none">12</span>
+          <span class="mt-1 text-[10px] uppercase tracking-[0.22em]" style="color: var(--muted)">
+            photos of you
+          </span>
+        </div>
+      </section>
+
+      <section class="pt-10">
+        <div class="flex items-baseline justify-between pb-4">
+          <h2 class="display text-2xl">Your photos</h2>
+          <span class="text-[10px] uppercase tracking-[0.22em]" style="color: var(--muted)">
+            Matched to your face &middot; <span class="number">12</span>
+          </span>
+        </div>
+        <ul class="grid grid-cols-3 gap-3">
+          <li><img src="https://picsum.photos/seed/p1/400/400" alt="" class="aspect-square w-full object-cover" /></li>
+          <li><img src="https://picsum.photos/seed/p2/400/400" alt="" class="aspect-square w-full object-cover" /></li>
+          <li><img src="https://picsum.photos/seed/p3/400/400" alt="" class="aspect-square w-full object-cover" /></li>
+          <li><img src="https://picsum.photos/seed/p4/400/400" alt="" class="aspect-square w-full object-cover" /></li>
+          <li><img src="https://picsum.photos/seed/p5/400/400" alt="" class="aspect-square w-full object-cover" /></li>
+          <li><img src="https://picsum.photos/seed/p6/400/400" alt="" class="aspect-square w-full object-cover" /></li>
+          <li><img src="https://picsum.photos/seed/p7/400/400" alt="" class="aspect-square w-full object-cover" /></li>
+          <li><img src="https://picsum.photos/seed/p8/400/400" alt="" class="aspect-square w-full object-cover" /></li>
+          <li><img src="https://picsum.photos/seed/p9/400/400" alt="" class="aspect-square w-full object-cover" /></li>
+        </ul>
+      </section>
+
+      <section class="mt-16 border-t rule pt-8">
+        <div class="flex items-baseline justify-between pb-2">
+          <h2 class="display text-xl italic" style="color: var(--muted)">All contributions</h2>
+          <span class="text-[10px] uppercase tracking-[0.22em]" style="color: var(--muted)">
+            <span class="number">38</span> unmatched
+          </span>
+        </div>
+        <p class="mb-5 max-w-[55ch] text-[13px] leading-relaxed" style="color: var(--muted)">
+          Photos contributors uploaded that the matcher didn&rsquo;t link to your face.
+        </p>
+        <ul class="grid grid-cols-6 gap-2">
+          <li><img src="https://picsum.photos/seed/o1/300/300" alt="" class="aspect-square w-full object-cover opacity-70" /></li>
+          <li><img src="https://picsum.photos/seed/o2/300/300" alt="" class="aspect-square w-full object-cover opacity-70" /></li>
+          <li><img src="https://picsum.photos/seed/o3/300/300" alt="" class="aspect-square w-full object-cover opacity-70" /></li>
+          <li><img src="https://picsum.photos/seed/o4/300/300" alt="" class="aspect-square w-full object-cover opacity-70" /></li>
+          <li><img src="https://picsum.photos/seed/o5/300/300" alt="" class="aspect-square w-full object-cover opacity-70" /></li>
+          <li><img src="https://picsum.photos/seed/o6/300/300" alt="" class="aspect-square w-full object-cover opacity-70" /></li>
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Pocket — Warm Analog (Owner)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --cream: #f5efe4;
+        --paper: #fbf8f1;
+        --ink: #2b2620;
+        --muted: #8b8478;
+        --rule: #e0d8c5;
+        --plum: #6b4a55;
+      }
+      body {
+        background: var(--cream);
+        color: var(--ink);
+        font-family: 'Geist', system-ui, sans-serif;
+      }
+      .display {
+        font-family: 'Instrument Serif', Georgia, serif;
+      }
+      .stamp {
+        background: var(--paper);
+        box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), inset 0 0 0 1px var(--rule);
+      }
+      .photo {
+        background: var(--paper);
+        padding: 6px 6px 14px;
+        box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), inset 0 0 0 1px var(--rule);
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body class="min-h-screen">
+    <main class="mx-auto w-full max-w-2xl px-6 py-8">
+      <header class="flex items-center justify-between">
+        <span class="display text-xl italic" style="color: var(--plum)">Pocket</span>
+        <button
+          class="rounded-full px-4 py-2 text-sm font-medium text-white"
+          style="background: var(--ink)"
+        >
+          Get share link
+        </button>
+      </header>
+
+      <section class="mt-10 stamp rounded-2xl px-7 py-6">
+        <p class="text-[11px] uppercase tracking-[0.18em]" style="color: var(--muted)">A pocket</p>
+        <h1 class="display mt-1 text-[40px] leading-tight">
+          Mason&rsquo;s <span class="italic" style="color: var(--plum)">birthday</span>
+        </h1>
+        <p class="mt-1 text-sm" style="color: var(--muted)">
+          12 photos of you &middot; 38 in the album
+        </p>
+      </section>
+
+      <section class="mt-10">
+        <div class="mb-4 flex items-baseline justify-between">
+          <h2 class="display text-xl">Photos of you</h2>
+          <span class="text-[11px] uppercase tracking-[0.18em]" style="color: var(--muted)">
+            Matched by face &middot; 12
+          </span>
+        </div>
+        <ul class="grid grid-cols-3 gap-3">
+          <li><div class="photo"><img src="https://picsum.photos/seed/w1/400/400" alt="" class="aspect-square w-full object-cover rounded-sm" /></div></li>
+          <li><div class="photo"><img src="https://picsum.photos/seed/w2/400/400" alt="" class="aspect-square w-full object-cover rounded-sm" /></div></li>
+          <li><div class="photo"><img src="https://picsum.photos/seed/w3/400/400" alt="" class="aspect-square w-full object-cover rounded-sm" /></div></li>
+          <li><div class="photo"><img src="https://picsum.photos/seed/w4/400/400" alt="" class="aspect-square w-full object-cover rounded-sm" /></div></li>
+          <li><div class="photo"><img src="https://picsum.photos/seed/w5/400/400" alt="" class="aspect-square w-full object-cover rounded-sm" /></div></li>
+          <li><div class="photo"><img src="https://picsum.photos/seed/w6/400/400" alt="" class="aspect-square w-full object-cover rounded-sm" /></div></li>
+        </ul>
+      </section>
+
+      <section class="mt-14 border-t pt-8" style="border-color: var(--rule)">
+        <div class="mb-2 flex items-baseline justify-between">
+          <h2 class="display text-lg italic" style="color: var(--muted)">Everything else</h2>
+          <span class="text-[11px] uppercase tracking-[0.18em]" style="color: var(--muted)">26</span>
+        </div>
+        <p class="mb-5 text-[13px] leading-relaxed" style="color: var(--muted)">
+          Photos contributors uploaded that the matcher didn&rsquo;t link to your face.
+        </p>
+        <ul class="grid grid-cols-4 gap-2">
+          <li><img src="https://picsum.photos/seed/wo1/300/300" alt="" class="aspect-square w-full rounded object-cover opacity-70" /></li>
+          <li><img src="https://picsum.photos/seed/wo2/300/300" alt="" class="aspect-square w-full rounded object-cover opacity-70" /></li>
+          <li><img src="https://picsum.photos/seed/wo3/300/300" alt="" class="aspect-square w-full rounded object-cover opacity-70" /></li>
+          <li><img src="https://picsum.photos/seed/wo4/300/300" alt="" class="aspect-square w-full rounded object-cover opacity-70" /></li>
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>

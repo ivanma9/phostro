@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Pocket — Warm Analog</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --cream: #f5efe4;
+        --paper: #fbf8f1;
+        --ink: #2b2620;
+        --muted: #8b8478;
+        --rule: #e0d8c5;
+        --plum: #6b4a55;
+      }
+      body {
+        background: var(--cream);
+        color: var(--ink);
+        font-family: 'Geist', system-ui, sans-serif;
+      }
+      .display {
+        font-family: 'Instrument Serif', Georgia, serif;
+      }
+      .stamp {
+        background: var(--paper);
+        box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), inset 0 0 0 1px var(--rule);
+      }
+    </style>
+  </head>
+  <body class="min-h-screen">
+    <main class="mx-auto flex min-h-screen max-w-md flex-col px-6 py-8">
+      <header class="flex items-center justify-between">
+        <span class="display text-xl italic" style="color: var(--plum)">Pocket</span>
+        <span class="text-[10px] uppercase tracking-[0.18em]" style="color: var(--muted)">
+          A small, private place
+        </span>
+      </header>
+
+      <section class="mt-12">
+        <div class="stamp rounded-2xl p-7">
+          <p class="text-[11px] uppercase tracking-[0.18em]" style="color: var(--muted)">
+            From Ivan
+          </p>
+          <h1 class="display mt-3 text-[34px] leading-tight">
+            &ldquo;Hey &mdash; got any photos from
+            <span class="italic" style="color: var(--plum)">Mason&rsquo;s birthday</span>?&rdquo;
+          </h1>
+          <p class="mt-4 text-[14px] leading-relaxed" style="color: var(--muted)">
+            Drop them in. I&rsquo;ll get only the ones I&rsquo;m in &mdash; the rest stay yours.
+          </p>
+        </div>
+
+        <div class="mt-6">
+          <button
+            class="w-full rounded-xl py-4 text-base font-medium text-white"
+            style="background: var(--ink)"
+          >
+            Add photos
+          </button>
+        </div>
+
+        <p class="mt-4 text-center text-[12px] italic" style="color: var(--muted); font-family: 'Instrument Serif', Georgia, serif">
+          Yours stay private.
+        </p>
+      </section>
+
+      <footer class="mt-auto flex items-center justify-center gap-2 pt-10 text-[11px]" style="color: var(--muted)">
+        <span class="display italic">Pocket</span>
+        <span>&middot;</span>
+        <a href="#" class="underline-offset-4 hover:underline">Terms of Service</a>
+      </footer>
+    </main>
+  </body>
+</html>

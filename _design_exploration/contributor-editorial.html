@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Pocket — Editorial</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --paper: #fbfaf6;
+        --ink: #1a1a1a;
+        --muted: #6b6862;
+        --rule: #e8e4d8;
+        --accent: #b54820;
+      }
+      body {
+        background: var(--paper);
+        color: var(--ink);
+        font-family: 'Inter', system-ui, sans-serif;
+      }
+      .display {
+        font-family: 'Fraunces', Georgia, serif;
+        font-feature-settings: 'ss01', 'ss02';
+      }
+      .rule {
+        border-color: var(--rule);
+      }
+      .number {
+        font-family: 'Fraunces', Georgia, serif;
+        font-variant-numeric: tabular-nums oldstyle-nums;
+        letter-spacing: -0.02em;
+      }
+    </style>
+  </head>
+  <body class="min-h-screen">
+    <main class="mx-auto flex min-h-screen max-w-md flex-col px-7 py-8">
+      <header class="flex items-baseline justify-between border-b rule pb-3">
+        <span class="display text-lg italic" style="color: var(--accent)">Pocket</span>
+        <span class="text-[10px] uppercase tracking-[0.25em]" style="color: var(--muted)">No. 047</span>
+      </header>
+
+      <section class="mt-16 space-y-6">
+        <p class="text-[11px] uppercase tracking-[0.22em]" style="color: var(--muted)">
+          A request, from Ivan
+        </p>
+        <h1 class="display text-[44px] leading-[1.05] tracking-tight">
+          Got any photos<br />
+          from <em class="italic" style="color: var(--accent)">Mason&rsquo;s birthday</em>?
+        </h1>
+        <p class="max-w-[28ch] text-[15px] leading-relaxed" style="color: var(--muted)">
+          Drop them here and Ivan will receive only the ones he&rsquo;s in. Yours stay private.
+        </p>
+
+        <div class="pt-6">
+          <button
+            class="w-full rounded-none border-2 py-5 text-base font-medium tracking-tight"
+            style="border-color: var(--ink); background: var(--ink); color: var(--paper)"
+          >
+            Add photos
+          </button>
+        </div>
+
+        <div class="flex items-center gap-3 pt-2 text-xs" style="color: var(--muted)">
+          <span class="number text-2xl" style="color: var(--ink)">04</span>
+          <span class="uppercase tracking-[0.18em]">photos already shared</span>
+        </div>
+      </section>
+
+      <footer class="mt-auto flex items-center justify-between border-t rule pt-4 text-[10px] uppercase tracking-[0.22em]" style="color: var(--muted)">
+        <span>Pocket &middot; Private by default</span>
+        <a href="#" class="underline-offset-4 hover:underline">Terms</a>
+      </footer>
+    </main>
+  </body>
+</html>
