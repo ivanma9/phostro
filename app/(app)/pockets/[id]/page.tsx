@@ -142,7 +142,7 @@ export default async function PocketPage({ params }: { params: Promise<{ id: str
   if (isExpired) {
     return (
       <ToastProvider>
-      <div>
+      <div style={{ maxWidth: 480, margin: '0 auto' }}>
         <AppBar
           leading={
             <Link href="/" style={{ display: 'flex', alignItems: 'center', padding: 4 }}>
@@ -207,7 +207,7 @@ export default async function PocketPage({ params }: { params: Promise<{ id: str
   // ── Active state ───────────────────────────────────────────────────────────
   return (
     <ToastProvider>
-    <div>
+    <div style={{ maxWidth: 480, margin: '0 auto' }}>
       {/* ── Near-expiry banner ── */}
       {isNearExpiry && (
         <div

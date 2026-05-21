@@ -49,7 +49,7 @@ export default async function Home() {
   )
 
   return (
-    <>
+    <div style={{ maxWidth: 480, margin: '0 auto' }}>
       <AppBar leading={<Logo size={20} />} trailing={avatar} />
 
       {activeCount === 0 ? (
@@ -146,6 +146,6 @@ export default async function Home() {
           <I name="plus" size={18} /> New pocket
         </Link>
       )}
-    </>
+    </div>
   )
 }
