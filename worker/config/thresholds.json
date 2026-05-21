@@ -1,8 +1,8 @@
 {
-  "match_max_distance": 0.55,
-  "maybe_max_distance": 0.60,
-  "_eval_date": "2026-05-07",
+  "match_max_distance": 0.60,
+  "maybe_max_distance": 0.65,
+  "_eval_date": "2026-05-08",
   "_decision_doc": "docs/ops/threshold-decision-2026-05.md",
-  "_status": "PLACEHOLDER — empirical re-tune required before production cutover",
-  "_note": "ArcFace R50 (w600k_r50.onnx) replaces SFace as of 2026-05-07. The previous 0.92 SFace stop-gap is numerically incomparable to ArcFace cosine distances. 0.55 is the operating-point neighborhood for L2-normalized R50 embeddings on Glint360K (typical same-identity max ~0.45, different-identity min ~0.65). MUST re-run phostro-bench eval-labeled + founder dogfood pairs and update via the threshold-decision doc before deploying. The MATCH_MAX_DISTANCE env var on Fly + Vercel must stay in lockstep with this file."
+  "_status": "DOGFOOD-TUNED — empirical, 5-photo sample, glasses recall is a known gap",
+  "_note": "ArcFace R50 (w600k_r50.onnx) replaces SFace as of 2026-05-07. Bumped from 0.55 → 0.60 on 2026-05-08 after multi-angle dogfood: founder uploaded 5 photos, 3 self (incl. one with glasses at 0.858), 2 non-self (0.859, 0.948). True self-photos clustered at 0.544 and 0.587; glasses photo at 0.858 sits in noise band with non-self photo at 0.859 — indistinguishable at embedding level. 0.60 catches 2 of 3 self photos (recall 67%) with zero false positives. Glasses photo is a known v1 task: add an optional 4th 'with glasses' enrollment angle. Don't push above 0.60 without re-validating with more labeled pairs — the precision/recall curve is steep here. The MATCH_MAX_DISTANCE env var on Fly + Vercel must stay in lockstep with this file."
 }
