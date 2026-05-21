@@ -98,7 +98,7 @@ export default function TermsOfServicePage() {
             margin: '10px 0 0',
           }}
         >
-          Every pocket lasts 7 days. At the deadline, we hard-delete the photos and the metadata.
+          Every pocket lasts 30 days. At the deadline, we hard-delete the photos and the metadata.
           The host gets one ZIP download before that happens.
         </p>
       </section>

@@ -114,7 +114,7 @@ export function PocketCreateForm() {
         </label>
 
         <p style={{ margin: 0, fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.5 }}>
-          Your pocket lasts 7 days. We auto-delete every photo at expiry.
+          Your pocket lasts 30 days. We auto-delete every photo at expiry.
         </p>
 
         {/* Attribution toggle — always-on (mandatory per locked v1 decisions). */}
