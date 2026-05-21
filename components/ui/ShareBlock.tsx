@@ -58,8 +58,6 @@ export function ShareBlock({
         border: '1px solid ' + (revoked ? 'rgba(154,48,39,.25)' : 'var(--rule)'),
         borderRadius: 22,
         padding: 20,
-        display: 'grid',
-        gridTemplateColumns: 'auto 1fr',
         gap: 18,
         alignItems: 'center',
       }}

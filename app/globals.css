@@ -331,11 +331,11 @@
   .ink-soft { color: var(--ink-soft); }
 
   /* ShareBlock responsive layout */
-  .share-block { grid-template-columns: auto 1fr; }
+  .share-block { display: grid; grid-template-columns: auto 1fr; }
   @media (max-width: 480px) {
     .share-block { grid-template-columns: 1fr; justify-items: center; }
     .share-block .share-block-qr { margin: 0 auto; }
-    .share-block > div:last-child { width: 100%; }
+    .share-block > div:last-child { width: 100%; min-width: 0; }
   }
 }
 
